@@ -27,20 +27,26 @@ export class UndoManager {
     /**
      * Undo実行（最後のアクションを取得して削除）
      */
+    /**
+     * Undo実行（最後のアクションを取得して削除）
+     */
     public popUndo(): UndoAction | undefined {
         const action = this.undoStack.pop();
         if (action) {
-            // 将来的にRedoを実装する際はここでredoStackにpushする
-            // this.redoStack.push(action);
+            this.redoStack.push(action);
         }
         return action;
     }
 
     /**
-     * Redo実行（将来用）
+     * Redo実行
      */
     public popRedo(): UndoAction | undefined {
-        return this.redoStack.pop();
+        const action = this.redoStack.pop();
+        if (action) {
+            this.undoStack.push(action);
+        }
+        return action;
     }
 
     /**

@@ -118,10 +118,10 @@ export interface LoadResult {
 export type UndoAction =
     | { type: 'deletePage'; page: PageData; index: number }
     | { type: 'movePage'; fromIndex: number; toIndex: number }
-    | { type: 'rotatePage'; pageId: string; previousRotation: number }
+    | { type: 'rotatePage'; pageId: string; previousRotation: number; newRotation?: number }
     | { type: 'clear'; pages: PageData[]; selectedIndex: number }
-    | { type: 'addText'; pageId: string; annotationId: string }
-    | { type: 'addHighlight'; pageId: string; annotationId: string }
-    | { type: 'addImage'; pageId: string; index: number }
-    | { type: 'duplicatePage'; pageId: string; index: number }
+    | { type: 'addText'; pageId: string; annotationId: string; annotation?: TextAnnotation }
+    | { type: 'addHighlight'; pageId: string; annotationId: string; annotation?: HighlightAnnotation }
+    | { type: 'addImage'; pageId: string; index: number; page?: PageData }
+    | { type: 'duplicatePage'; pageId: string; index: number; page?: PageData }
     | { type: 'moveText'; pageId: string; annotationId: string; fromX: number; fromY: number; toX: number; toY: number };

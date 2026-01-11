@@ -121,6 +121,22 @@
           </button>
         </div>
         <div class="btn-group">
+          <button id="btn-undo" class="btn btn-secondary" title="元に戻す (Ctrl+Z)" disabled>
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 19V5L5 12l7 7z" transform="scale(-1, 1) translate(-24, 0) rotate(90 12 12)"></path>
+            </svg>
+            <span>元に戻す</span>
+          </button>
+          <button id="btn-redo" class="btn btn-secondary" title="やり直し (Ctrl+Y)" disabled>
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 19V5L5 12l7 7z" transform="rotate(90 12 12)"></path>
+            </svg>
+            <span>やり直し</span>
+          </button>
+        </div>
+        <div class="btn-group">
           <button id="btn-export-png" class="btn btn-secondary" title="現在のページを画像として保存">
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
               stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
