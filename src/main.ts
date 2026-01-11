@@ -1,9 +1,9 @@
 import { saveAs } from 'file-saver';
-import { PDFDocument, degrees } from 'pdf-lib';
+import { PDFDocument, degrees, rgb, StandardFonts } from 'pdf-lib';
 import { PDFService } from './services/PDFService';
 import { ImageService } from './services/ImageService';
 import { KeyboardService } from './services/KeyboardService';
-import type { AppState, PageData, ToastType } from './types';
+import type { AppState, PageData, ToastType, TextAnnotation } from './types';
 import './styles/index.css';
 
 // Worker設定はPDFService側で行われる
@@ -23,6 +23,12 @@ class PDFEditorApp {
     private pdfService: PDFService;
     private imageService: ImageService;
     private keyboardService: KeyboardService;
+
+    // ドラッグ状態
+    private draggingAnnotation: TextAnnotation | null = null;
+    private dragOffset = { x: 0, y: 0 };
+    private readonly previewScale = 1.5;
+    private backgroundImageData: ImageData | null = null;
 
     // DOM Elements
     private elements!: {
@@ -58,6 +64,15 @@ class PDFEditorApp {
         toastContainer: HTMLDivElement;
         iconLight: SVGElement;
         iconDark: SVGElement;
+        // テキストモーダル
+        btnAddText: HTMLButtonElement;
+        textModal: HTMLDivElement;
+        textModalClose: HTMLButtonElement;
+        textModalCancel: HTMLButtonElement;
+        textModalOk: HTMLButtonElement;
+        textInput: HTMLTextAreaElement;
+        textSize: HTMLSelectElement;
+        textColor: HTMLInputElement;
     };
 
     constructor() {
@@ -121,6 +136,15 @@ class PDFEditorApp {
             toastContainer: document.getElementById('toast-container') as HTMLDivElement,
             iconLight: document.getElementById('icon-light') as unknown as SVGElement,
             iconDark: document.getElementById('icon-dark') as unknown as SVGElement,
+            // テキストモーダル
+            btnAddText: document.getElementById('btn-add-text') as HTMLButtonElement,
+            textModal: document.getElementById('text-modal') as HTMLDivElement,
+            textModalClose: document.getElementById('text-modal-close') as HTMLButtonElement,
+            textModalCancel: document.getElementById('text-modal-cancel') as HTMLButtonElement,
+            textModalOk: document.getElementById('text-modal-ok') as HTMLButtonElement,
+            textInput: document.getElementById('text-input') as HTMLTextAreaElement,
+            textSize: document.getElementById('text-size') as HTMLSelectElement,
+            textColor: document.getElementById('text-color') as HTMLInputElement,
         };
     }
 
@@ -212,6 +236,22 @@ class PDFEditorApp {
             this.toggleTheme();
         });
 
+        // テキスト追加
+        this.elements.btnAddText.addEventListener('click', () => {
+            this.openTextModal();
+        });
+
+        // テキストモーダルイベント
+        this.elements.textModalClose.addEventListener('click', () => {
+            this.closeTextModal();
+        });
+        this.elements.textModalCancel.addEventListener('click', () => {
+            this.closeTextModal();
+        });
+        this.elements.textModalOk.addEventListener('click', () => {
+            this.addTextAnnotation();
+        });
+
         // ドラッグ＆ドロップ
         this.setupDropZone();
 
@@ -223,6 +263,12 @@ class PDFEditorApp {
         this.elements.btnNext.addEventListener('click', () => {
             this.selectPage(this.state.selectedPageIndex + 1);
         });
+
+        // テキスト注釈のドラッグ
+        this.elements.previewCanvas.addEventListener('mousedown', (e) => this.onCanvasMouseDown(e));
+        this.elements.previewCanvas.addEventListener('mousemove', (e) => this.onCanvasMouseMove(e));
+        this.elements.previewCanvas.addEventListener('mouseup', () => this.onCanvasMouseUp());
+        this.elements.previewCanvas.addEventListener('mouseleave', () => this.onCanvasMouseUp());
     }
 
     // クロスOS対応のショートカット登録ヘルパー
@@ -601,7 +647,46 @@ class PDFEditorApp {
         const page = this.state.pages[this.state.selectedPageIndex];
         await this.pdfService.renderToCanvas(this.elements.previewCanvas, page);
 
+        // 背景をキャッシュ
+        const ctx = this.elements.previewCanvas.getContext('2d')!;
+        this.backgroundImageData = ctx.getImageData(
+            0, 0,
+            this.elements.previewCanvas.width,
+            this.elements.previewCanvas.height
+        );
+
+        // テキスト注釈を描画
+        this.drawTextAnnotations();
+
         this.updatePageNav();
+    }
+
+    private drawTextAnnotations(): void {
+        const page = this.state.pages[this.state.selectedPageIndex];
+        if (!page || !page.textAnnotations || page.textAnnotations.length === 0) return;
+
+        const ctx = this.elements.previewCanvas.getContext('2d')!;
+        const scale = this.previewScale;
+
+        for (const annotation of page.textAnnotations) {
+            ctx.save();
+            ctx.font = `${annotation.fontSize * scale}px sans-serif`;
+            ctx.fillStyle = annotation.color;
+            ctx.textBaseline = 'top';
+            // PDF座標系をCanvas座標系に変換（Y軸反転）
+            const canvasX = annotation.x * scale;
+            const canvasY = (page.height - annotation.y) * scale;
+            ctx.fillText(annotation.text, canvasX, canvasY);
+            ctx.restore();
+        }
+    }
+
+    private redrawWithCachedBackground(): void {
+        if (!this.backgroundImageData) return;
+
+        const ctx = this.elements.previewCanvas.getContext('2d')!;
+        ctx.putImageData(this.backgroundImageData, 0, 0);
+        this.drawTextAnnotations();
     }
 
     private updatePageNav(): void {
@@ -626,6 +711,7 @@ class PDFEditorApp {
         this.elements.btnDuplicate.disabled = !hasPages || selectedIndex < 0;
         this.elements.btnDelete.disabled = !hasPages || selectedIndex < 0;
         this.elements.btnClear.disabled = !hasPages;
+        this.elements.btnAddText.disabled = !hasPages || selectedIndex < 0;
         this.elements.btnExportPng.disabled = !hasPages || selectedIndex < 0;
         this.elements.btnExportAll.disabled = !hasPages;
 
@@ -649,6 +735,125 @@ class PDFEditorApp {
         this.showToast('ページをクリアしました', 'success');
     }
 
+    private openTextModal(): void {
+        this.elements.textInput.value = '';
+        this.elements.textSize.value = '16';
+        this.elements.textColor.value = '#000000';
+        this.elements.textModal.style.display = 'flex';
+        this.elements.textInput.focus();
+    }
+
+    private closeTextModal(): void {
+        this.elements.textModal.style.display = 'none';
+    }
+
+    private addTextAnnotation(): void {
+        const text = this.elements.textInput.value.trim();
+        if (!text) {
+            this.showToast('テキストを入力してください', 'warning');
+            return;
+        }
+
+        const page = this.state.pages[this.state.selectedPageIndex];
+        if (!page) return;
+
+        const annotation: TextAnnotation = {
+            id: crypto.randomUUID(),
+            text,
+            x: page.width / 2, // 中央に配置
+            y: page.height / 2,
+            fontSize: parseInt(this.elements.textSize.value),
+            color: this.elements.textColor.value,
+        };
+
+        if (!page.textAnnotations) {
+            page.textAnnotations = [];
+        }
+        page.textAnnotations.push(annotation);
+
+        this.closeTextModal();
+        // キャッシュ背景がある場合はそれを使用、なければフル再描画
+        if (this.backgroundImageData) {
+            this.redrawWithCachedBackground();
+        } else {
+            this.updateMainView();
+        }
+        this.showToast('テキストを追加しました', 'success');
+    }
+
+    private onCanvasMouseDown(e: MouseEvent): void {
+        const page = this.state.pages[this.state.selectedPageIndex];
+        if (!page || !page.textAnnotations || page.textAnnotations.length === 0) return;
+
+        const canvas = this.elements.previewCanvas;
+        const rect = canvas.getBoundingClientRect();
+
+        // 表示サイズと内部サイズの比率を計算
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+
+        const canvasX = (e.clientX - rect.left) * scaleX;
+        const canvasY = (e.clientY - rect.top) * scaleY;
+
+        // Canvas座標をPDF座標に変換
+        const pdfX = canvasX / this.previewScale;
+        const pdfY = page.height - (canvasY / this.previewScale);
+
+        // クリック位置にある注釈を検索（最後に追加されたものが優先）
+        for (let i = page.textAnnotations.length - 1; i >= 0; i--) {
+            const ann = page.textAnnotations[i];
+            // テキストの大まかなヒット領域を計算（広めに設定）
+            const textWidth = Math.max(ann.text.length * ann.fontSize * 0.6, 50);
+            const textHeight = ann.fontSize * 1.5;
+
+            if (pdfX >= ann.x - 10 && pdfX <= ann.x + textWidth + 10 &&
+                pdfY >= ann.y - textHeight - 10 && pdfY <= ann.y + 10) {
+                this.draggingAnnotation = ann;
+                this.dragOffset.x = pdfX - ann.x;
+                this.dragOffset.y = pdfY - ann.y;
+                this.elements.previewCanvas.style.cursor = 'grabbing';
+                e.preventDefault();
+                return;
+            }
+        }
+    }
+
+    private onCanvasMouseMove(e: MouseEvent): void {
+        if (!this.draggingAnnotation) return;
+
+        const page = this.state.pages[this.state.selectedPageIndex];
+        if (!page) return;
+
+        const canvas = this.elements.previewCanvas;
+        const rect = canvas.getBoundingClientRect();
+
+        // 表示サイズと内部サイズの比率を計算
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+
+        const canvasX = (e.clientX - rect.left) * scaleX;
+        const canvasY = (e.clientY - rect.top) * scaleY;
+
+        // Canvas座標をPDF座標に変換
+        const pdfX = canvasX / this.previewScale;
+        const pdfY = page.height - (canvasY / this.previewScale);
+
+        // 位置を更新
+        this.draggingAnnotation.x = pdfX - this.dragOffset.x;
+        this.draggingAnnotation.y = pdfY - this.dragOffset.y;
+
+        // キャッシュ背景を使ってテキストのみ再描画
+        this.redrawWithCachedBackground();
+        e.preventDefault();
+    }
+
+    private onCanvasMouseUp(): void {
+        if (this.draggingAnnotation) {
+            this.draggingAnnotation = null;
+            this.elements.previewCanvas.style.cursor = 'default';
+        }
+    }
+
     private async savePDF(): Promise<void> {
         if (this.state.pages.length === 0) return;
 
@@ -658,11 +863,12 @@ class PDFEditorApp {
             const pdfDoc = await PDFDocument.create();
 
             for (const page of this.state.pages) {
+                let pdfPage;
                 if (page.type === 'image') {
-                    const addedPage = await this.imageService.embedImageToPdf(pdfDoc, page);
+                    pdfPage = await this.imageService.embedImageToPdf(pdfDoc, page);
                     // 画像ページの回転を適用
-                    if (page.rotation && addedPage) {
-                        addedPage.setRotation(degrees(page.rotation));
+                    if (page.rotation && pdfPage) {
+                        pdfPage.setRotation(degrees(page.rotation));
                     }
                 } else if (page.pdfBytes && page.originalPageIndex !== undefined) {
                     // PDF由来のページをコピー
@@ -676,6 +882,27 @@ class PDFEditorApp {
                         copiedPage.setRotation(degrees(currentRotation + page.rotation));
                     }
                     pdfDoc.addPage(copiedPage);
+                    pdfPage = copiedPage;
+                }
+
+                // テキスト注釈を埋め込む
+                if (pdfPage && page.textAnnotations && page.textAnnotations.length > 0) {
+                    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+                    for (const annotation of page.textAnnotations) {
+                        // Hex色をRGBに変換
+                        const hex = annotation.color.replace('#', '');
+                        const r = parseInt(hex.substring(0, 2), 16) / 255;
+                        const g = parseInt(hex.substring(2, 4), 16) / 255;
+                        const b = parseInt(hex.substring(4, 6), 16) / 255;
+
+                        pdfPage.drawText(annotation.text, {
+                            x: annotation.x,
+                            y: annotation.y,
+                            size: annotation.fontSize,
+                            font,
+                            color: rgb(r, g, b),
+                        });
+                    }
                 }
             }
 

@@ -3,6 +3,24 @@
  */
 
 /**
+ * テキスト注釈
+ */
+export interface TextAnnotation {
+    /** 一意のID */
+    id: string;
+    /** テキスト内容 */
+    text: string;
+    /** X座標 (ページ座標系, pt) */
+    x: number;
+    /** Y座標 (ページ座標系, pt) */
+    y: number;
+    /** フォントサイズ (pt) */
+    fontSize: number;
+    /** 色 (hex) */
+    color: string;
+}
+
+/**
  * ページデータ
  */
 export interface PageData {
@@ -30,6 +48,8 @@ export interface PageData {
     originalPageIndex?: number;
     /** 回転角度 (0, 90, 180, 270) */
     rotation?: number;
+    /** テキスト注釈 */
+    textAnnotations?: TextAnnotation[];
 }
 
 /**
