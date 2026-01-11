@@ -113,6 +113,11 @@ export class PDFService {
         canvas.height = viewport.height;
 
         const context = canvas.getContext('2d')!;
+
+        // 変形行列をリセット（描画崩れ防止）
+        context.setTransform(1, 0, 0, 1, 0, 0);
+        context.clearRect(0, 0, canvas.width, canvas.height);
+
         await page.render({
             canvasContext: context,
             viewport,
