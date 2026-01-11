@@ -8,6 +8,7 @@ import type { PageData } from '../types';
 export class ImageService {
     /**
      * 画像ファイルをPageDataに変換
+     * 画像はページサイズに合わせてスケーリングされる
      */
     async imageToPageData(
         file: File,
@@ -15,50 +16,72 @@ export class ImageService {
         referenceHeight: number
     ): Promise<PageData> {
         const imageBytes = new Uint8Array(await file.arrayBuffer());
-        const thumbnail = await this.createThumbnail(file);
+        const { thumbnail, fullImage, originalWidth, originalHeight } = await this.processImage(file);
 
         return {
             id: uuidv4(),
             type: 'image',
             imageBytes,
             thumbnail,
-            width: referenceWidth,
+            fullImage,  // フルサイズ画像（プレビュー用）
+            width: referenceWidth,  // ページサイズ
             height: referenceHeight,
+            originalWidth,
+            originalHeight,
         };
     }
 
     /**
-     * 画像のサムネイルを生成
+     * 画像を処理してサムネイルとフルサイズ画像を生成
      */
-    private async createThumbnail(file: File): Promise<string> {
+    private async processImage(file: File): Promise<{
+        thumbnail: string;
+        fullImage: string;
+        originalWidth: number;
+        originalHeight: number;
+    }> {
         return new Promise((resolve, reject) => {
             const url = URL.createObjectURL(file);
             const img = new Image();
 
             img.onload = () => {
-                const canvas = document.createElement('canvas');
-                const maxSize = 200;
-                let { width, height } = img;
+                const originalWidth = img.width;
+                const originalHeight = img.height;
 
-                if (width > height) {
-                    if (width > maxSize) {
-                        height = (height * maxSize) / width;
-                        width = maxSize;
+                // サムネイル生成
+                const thumbCanvas = document.createElement('canvas');
+                const maxThumbSize = 200;
+                let thumbWidth = img.width;
+                let thumbHeight = img.height;
+
+                if (thumbWidth > thumbHeight) {
+                    if (thumbWidth > maxThumbSize) {
+                        thumbHeight = (thumbHeight * maxThumbSize) / thumbWidth;
+                        thumbWidth = maxThumbSize;
                     }
                 } else {
-                    if (height > maxSize) {
-                        width = (width * maxSize) / height;
-                        height = maxSize;
+                    if (thumbHeight > maxThumbSize) {
+                        thumbWidth = (thumbWidth * maxThumbSize) / thumbHeight;
+                        thumbHeight = maxThumbSize;
                     }
                 }
 
-                canvas.width = width;
-                canvas.height = height;
-                const ctx = canvas.getContext('2d')!;
-                ctx.drawImage(img, 0, 0, width, height);
+                thumbCanvas.width = thumbWidth;
+                thumbCanvas.height = thumbHeight;
+                const thumbCtx = thumbCanvas.getContext('2d')!;
+                thumbCtx.drawImage(img, 0, 0, thumbWidth, thumbHeight);
+                const thumbnail = thumbCanvas.toDataURL('image/jpeg', 0.8);
+
+                // フルサイズ画像のDataURL
+                const fullCanvas = document.createElement('canvas');
+                fullCanvas.width = originalWidth;
+                fullCanvas.height = originalHeight;
+                const fullCtx = fullCanvas.getContext('2d')!;
+                fullCtx.drawImage(img, 0, 0);
+                const fullImage = fullCanvas.toDataURL('image/jpeg', 0.95);
 
                 URL.revokeObjectURL(url);
-                resolve(canvas.toDataURL('image/jpeg', 0.8));
+                resolve({ thumbnail, fullImage, originalWidth, originalHeight });
             };
 
             img.onerror = () => {

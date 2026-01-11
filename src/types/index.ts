@@ -16,10 +16,16 @@ export interface PageData {
     imageBytes?: Uint8Array;
     /** サムネイル画像URL (data URL) */
     thumbnail: string;
+    /** フルサイズ画像URL (data URL, 画像ページ用) */
+    fullImage?: string;
     /** ページ幅 (pt) */
     width: number;
     /** ページ高さ (pt) */
     height: number;
+    /** 元画像の幅 (px, 画像ページ用) */
+    originalWidth?: number;
+    /** 元画像の高さ (px, 画像ページ用) */
+    originalHeight?: number;
     /** 元PDFのページインデックス（PDF由来の場合） */
     originalPageIndex?: number;
 }

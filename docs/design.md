@@ -5,20 +5,20 @@
 ```mermaid
 graph TB
     subgraph UI Layer
-        A[index.html] --> B[App Component]
-        B --> C[Sidebar]
-        B --> D[MainView]
+        A[index.html] --> B[PDFEditorApp]
+        B --> C[Sidebar/サムネイル一覧]
+        B --> D[MainView/プレビュー]
         B --> E[Toolbar]
     end
     
     subgraph Service Layer
         F[PDFService]
         G[ImageService]
-        H[StorageService]
+        H[KeyboardService]
     end
     
     subgraph External Libraries
-        I[pdf.js]
+        I[pdfjs-dist]
         J[pdf-lib]
     end
     
@@ -41,18 +41,9 @@ pdfeditor/
 │   ├── design.md            # 設計書（本ファイル）
 │   └── tasks.md             # タスク一覧
 ├── src/
-│   ├── index.html           # エントリーポイントHTML
-│   ├── main.ts              # アプリケーションエントリー
+│   ├── main.ts              # アプリケーションエントリー・メインロジック
 │   ├── styles/
-│   │   ├── index.css        # グローバルスタイル
-│   │   ├── variables.css    # CSS変数定義
-│   │   ├── sidebar.css      # サイドバースタイル
-│   │   └── main-view.css    # メインビュースタイル
-│   ├── components/
-│   │   ├── Sidebar.ts       # サイドバーコンポーネント
-│   │   ├── PageThumbnail.ts # サムネイルコンポーネント
-│   │   ├── MainView.ts      # メインビューコンポーネント
-│   │   └── Toolbar.ts       # ツールバーコンポーネント
+│   │   └── index.css        # 全スタイル統合
 │   ├── services/
 │   │   ├── PDFService.ts    # PDF操作サービス
 │   │   ├── ImageService.ts  # 画像処理サービス
@@ -60,9 +51,8 @@ pdfeditor/
 │   ├── types/
 │   │   └── index.ts         # 型定義
 │   └── utils/
-│       └── helpers.ts       # ヘルパー関数
-├── public/
-│   └── favicon.ico
+│       └── uuid.ts          # UUID生成
+├── index.html               # エントリーポイントHTML
 ├── package.json
 ├── tsconfig.json
 ├── vite.config.ts
@@ -71,59 +61,37 @@ pdfeditor/
 
 ---
 
-## 3. コンポーネント設計
+## 3. 状態管理
 
-### 3.1 状態管理
+### 3.1 アプリケーション状態
 
 ```typescript
-// アプリケーション状態
 interface AppState {
-  pdfDocument: PDFDocumentProxy | null;  // 読み込んだPDF
-  pages: PageData[];                      // ページ情報一覧
-  selectedPageIndex: number;              // 選択中のページインデックス
-  isLoading: boolean;                     // ローディング状態
-  isDarkMode: boolean;                    // ダークモード状態
-}
-
-// ページデータ
-interface PageData {
-  id: string;                  // 一意のID
-  type: 'pdf' | 'image';       // ページタイプ
-  originalSource: Uint8Array;  // 元データ
-  thumbnail: string;           // サムネイル画像URL (data URL)
-  width: number;               // ページ幅
-  height: number;              // ページ高さ
+    pages: PageData[];           // ページ情報一覧
+    selectedPageIndex: number;   // 選択中のページインデックス
+    isLoading: boolean;          // ローディング状態
+    isDarkMode: boolean;         // ダークモード状態
+    originalPdfBytes: Uint8Array | null;  // 元PDFのバイトデータ
 }
 ```
 
-### 3.2 Sidebar コンポーネント
+### 3.2 ページデータ
 
-**責務:**
-- ページサムネイル一覧の表示
-- ドラッグ＆ドロップによるファイル受付
-- ページ選択のハンドリング
-- ページ順序の並べ替え（ドラッグ）
-
-**イベント:**
-- `onPageSelect(index: number)` - ページ選択時
-- `onFileDrop(files: FileList, insertIndex: number)` - ファイルドロップ時
-- `onPageReorder(fromIndex: number, toIndex: number)` - 並べ替え時
-
-### 3.3 MainView コンポーネント
-
-**責務:**
-- 選択中ページの拡大表示
-- ページ送り機能
-
-**プロパティ:**
-- `currentPage: PageData` - 表示中のページ
-
-### 3.4 Toolbar コンポーネント
-
-**責務:**
-- ファイル読み込みボタン
-- PDF出力ボタン
-- ダークモード切り替え
+```typescript
+interface PageData {
+    id: string;                  // 一意のID
+    type: 'pdf' | 'image';       // ページタイプ
+    pdfBytes?: Uint8Array;       // PDF元データ
+    imageBytes?: Uint8Array;     // 画像元データ
+    thumbnail: string;           // サムネイル画像 (data URL)
+    fullImage?: string;          // フルサイズ画像 (data URL, 画像ページ用)
+    width: number;               // ページ幅 (pt)
+    height: number;              // ページ高さ (pt)
+    originalWidth?: number;      // 元画像幅 (px)
+    originalHeight?: number;     // 元画像高さ (px)
+    originalPageIndex?: number;  // PDF由来のページインデックス
+}
+```
 
 ---
 
@@ -133,26 +101,26 @@ interface PageData {
 
 ```typescript
 class PDFService {
-  // PDF読み込み
-  async loadPDF(file: File): Promise<PageData[]>;
-  
-  // PDFからページ抽出
-  async extractPages(pdfBytes: Uint8Array): Promise<PageData[]>;
-  
-  // サムネイル生成
-  async renderThumbnail(page: PDFPageProxy, scale: number): Promise<string>;
-  
-  // ページ削除
-  removePageAt(pages: PageData[], index: number): PageData[];
-  
-  // ページ挿入
-  insertPageAt(pages: PageData[], page: PageData, index: number): PageData[];
-  
-  // ページ並べ替え
-  reorderPages(pages: PageData[], fromIndex: number, toIndex: number): PageData[];
-  
-  // PDF出力
-  async exportPDF(pages: PageData[]): Promise<Uint8Array>;
+    // PDF読み込み
+    async loadPDF(file: File): Promise<LoadResult>;
+    
+    // PDFからページ抽出（ArrayBufferコピー対策済み）
+    async extractPages(pdfBytes: Uint8Array): Promise<PageData[]>;
+    
+    // サムネイル生成
+    async renderThumbnail(page: PDFPageProxy, scale: number): Promise<string>;
+    
+    // ページをCanvasにレンダリング
+    async renderToCanvas(canvas: HTMLCanvasElement, pageData: PageData): Promise<void>;
+    
+    // ページ削除
+    removePageAt(pages: PageData[], index: number): PageData[];
+    
+    // ページ挿入
+    insertPageAt(pages: PageData[], page: PageData, index: number): PageData[];
+    
+    // ページ並べ替え
+    reorderPages(pages: PageData[], fromIndex: number, toIndex: number): PageData[];
 }
 ```
 
@@ -160,19 +128,15 @@ class PDFService {
 
 ```typescript
 class ImageService {
-  // 画像をPDFページサイズにリサイズ
-  async resizeToPageSize(
-    imageFile: File, 
-    targetWidth: number, 
-    targetHeight: number
-  ): Promise<Uint8Array>;
-  
-  // 画像をPDFページとして追加
-  async imageToPageData(
-    imageFile: File,
-    referenceWidth: number,
-    referenceHeight: number
-  ): Promise<PageData>;
+    // 画像をPageDataに変換（ページサイズにフィット）
+    async imageToPageData(
+        file: File,
+        referenceWidth: number,
+        referenceHeight: number
+    ): Promise<PageData>;
+    
+    // 画像をPDFページとして埋め込む
+    async embedImageToPdf(pdfDoc: PDFDocument, pageData: PageData): Promise<void>;
 }
 ```
 
@@ -180,16 +144,14 @@ class ImageService {
 
 ```typescript
 class KeyboardService {
-  private shortcuts: Map<string, () => void>;
-  
-  // キーボードイベントのリスナー登録
-  registerShortcuts(): void;
-  
-  // ショートカット追加
-  addShortcut(key: string, modifiers: string[], callback: () => void): void;
-  
-  // クリーンアップ
-  destroy(): void;
+    // キーボードイベントリスナー登録
+    init(): void;
+    
+    // ショートカット追加
+    addShortcut(key: string, modifiers: string[], callback: () => void): void;
+    
+    // クリーンアップ
+    destroy(): void;
 }
 ```
 
@@ -201,7 +163,7 @@ class KeyboardService {
 
 ```
 +------------------------------------------------------------------+
-|  [📄 開く]  [💾 保存]                               [🌙 Dark Mode]  |  ← Toolbar
+|  [📄 開く]  [💾 保存]                               [🌙 テーマ]  |  ← Toolbar
 +------------------+-----------------------------------------------+
 |                  |                                               |
 |  +-----------+   |                                               |
@@ -212,15 +174,14 @@ class KeyboardService {
 |  | Page 2    |   |          大きなプレビュー                       |
 |  +-----------+   |                                               |
 |     (選択中)      |                                               |
-|  +-----------+   |                                               |
+|  +-----------+   |                        [< 1/13 >]            |
 |  | Page 3    |   |                                               |
 |  +-----------+   |                                               |
 |                  |                                               |
 |  [ドロップゾーン]  |                                               |
 |                  |                                               |
 +------------------+-----------------------------------------------+
-      Sidebar                      MainView
-     (250px固定)                  (flex: 1)
+      Sidebar (180px)                    MainView (flex: 1)
 ```
 
 ### 5.2 カラースキーム
@@ -228,24 +189,24 @@ class KeyboardService {
 ```css
 /* ライトモード */
 :root {
-  --bg-primary: #ffffff;
-  --bg-secondary: #f5f5f7;
-  --bg-tertiary: #e8e8ed;
-  --text-primary: #1d1d1f;
-  --text-secondary: #6e6e73;
-  --accent: #007aff;
-  --border: #d2d2d7;
+    --bg-primary: #ffffff;
+    --bg-secondary: #f5f5f7;
+    --bg-tertiary: #e8e8ed;
+    --text-primary: #1d1d1f;
+    --text-secondary: #6e6e73;
+    --accent: #007aff;
+    --border: #d2d2d7;
 }
 
 /* ダークモード */
 :root.dark {
-  --bg-primary: #1c1c1e;
-  --bg-secondary: #2c2c2e;
-  --bg-tertiary: #3a3a3c;
-  --text-primary: #f5f5f7;
-  --text-secondary: #98989d;
-  --accent: #0a84ff;
-  --border: #38383a;
+    --bg-primary: #1c1c1e;
+    --bg-secondary: #2c2c2e;
+    --bg-tertiary: #3a3a3c;
+    --text-primary: #f5f5f7;
+    --text-secondary: #98989d;
+    --accent: #0a84ff;
+    --border: #38383a;
 }
 ```
 
@@ -255,40 +216,59 @@ class KeyboardService {
 
 | ショートカット | 動作 | プラットフォーム |
 |----------------|------|------------------|
-| `Ctrl + D` | 選択ページ削除 | Windows |
-| `Cmd + D` | 選択ページ削除 | Mac |
 | `Ctrl + O` | PDFを開く | Windows |
 | `Cmd + O` | PDFを開く | Mac |
 | `Ctrl + S` | PDFを保存 | Windows |
 | `Cmd + S` | PDFを保存 | Mac |
-| `↑` / `↓` | ページ選択移動 | 共通 |
+| `Ctrl + D` | 選択ページ削除 | Windows |
+| `Cmd + D` | 選択ページ削除 | Mac |
+| `↑` | 前のページを選択 | 共通 |
+| `↓` | 次のページを選択 | 共通 |
 
 ---
 
-## 7. ドラッグ＆ドロップ処理フロー
+## 7. 処理フロー
+
+### 7.1 PDF読み込みフロー
 
 ```mermaid
 sequenceDiagram
     participant User
-    participant Sidebar
-    participant Service
-    participant State
+    participant App
+    participant PDFService
+    participant pdfjs
 
-    User->>Sidebar: ファイルをドラッグ
-    Sidebar->>Sidebar: ドロップゾーン表示・挿入位置ハイライト
-    User->>Sidebar: ファイルをドロップ
-    Sidebar->>Service: ファイル処理依頼
-    
-    alt PDFファイル
-        Service->>Service: PDFからページ抽出
-        Service->>Service: 各ページのサムネイル生成
-    else 画像ファイル
-        Service->>Service: 画像をページサイズにリサイズ
-        Service->>Service: サムネイル生成
+    User->>App: PDFファイルを選択/ドロップ
+    App->>App: ローディング表示
+    App->>PDFService: loadPDF(file)
+    PDFService->>PDFService: ArrayBuffer取得
+    PDFService->>pdfjs: getDocument(pdfBytes.slice())
+    pdfjs-->>PDFService: PDF Document
+    loop 各ページ
+        PDFService->>pdfjs: getPage(i)
+        PDFService->>PDFService: renderThumbnail()
+        PDFService->>PDFService: PageData作成（pdfBytesコピー）
     end
-    
-    Service->>State: ページ挿入
-    State->>Sidebar: UI更新
+    PDFService-->>App: PageData[]
+    App->>App: state更新・UI更新
+```
+
+### 7.2 画像挿入フロー
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant App
+    participant ImageService
+
+    User->>App: 画像をドラッグ＆ドロップ
+    App->>ImageService: imageToPageData(file, refWidth, refHeight)
+    ImageService->>ImageService: processImage()
+    ImageService->>ImageService: サムネイル生成
+    ImageService->>ImageService: フルサイズ画像生成
+    ImageService-->>App: PageData
+    App->>App: 指定位置に挿入
+    App->>App: UI更新
 ```
 
 ---
@@ -298,9 +278,9 @@ sequenceDiagram
 | エラー種別 | 対応 |
 |------------|------|
 | 非対応ファイル形式 | トースト通知で警告表示 |
-| 暗号化PDF | エラーメッセージ表示 |
-| ファイル読み込み失敗 | リトライ可能なエラー表示 |
-| メモリ不足 | 警告とページ数制限の提案 |
+| PDF読み込み失敗 | エラーメッセージ表示 |
+| 画像処理失敗 | エラーメッセージ表示 |
+| ArrayBuffer detachment | 事前にslice()でコピー |
 
 ---
 
@@ -308,13 +288,21 @@ sequenceDiagram
 
 ```json
 {
-  "dependencies": {
-    "pdf-lib": "^1.17.1",
-    "pdfjs-dist": "^4.0.379"
-  },
-  "devDependencies": {
-    "typescript": "^5.3.3",
-    "vite": "^5.0.10"
-  }
+    "dependencies": {
+        "pdf-lib": "^1.17.1",
+        "pdfjs-dist": "^4.10.38"
+    },
+    "devDependencies": {
+        "typescript": "~5.6.2",
+        "vite": "^6.0.5"
+    }
 }
 ```
+
+---
+
+## 10. 既知の制約・注意点
+
+- **ArrayBuffer detachment**: pdfjs-distはWorkerにArrayBufferを転送するとdetachされるため、事前にslice()でコピーが必要
+- **暗号化PDF**: 非対応
+- **大容量ファイル**: 100MB以上のPDFはパフォーマンス保証外

@@ -215,8 +215,8 @@ class PDFEditorApp {
         const result = await this.pdfService.loadPDF(file);
 
         if (result.success && result.pages) {
-            // 既存のページに追加
-            this.state.pages = [...this.state.pages, ...result.pages];
+            // 新しいPDFで置き換え（複数PDF結合が必要な場合はドラッグ&ドロップで追加）
+            this.state.pages = result.pages;
             this.state.originalPdfBytes = new Uint8Array(await file.arrayBuffer());
 
             if (this.state.selectedPageIndex === -1 && this.state.pages.length > 0) {
@@ -335,9 +335,7 @@ class PDFEditorApp {
         // サムネイル画像
         const img = document.createElement('img');
         img.src = page.thumbnail;
-        img.style.width = '100%';
-        img.style.height = '100%';
-        img.style.objectFit = 'contain';
+        img.alt = `ページ ${index + 1}`;
         container.appendChild(img);
 
         // ページ番号

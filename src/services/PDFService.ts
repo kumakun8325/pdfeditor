@@ -15,8 +15,8 @@ import type { PageData, LoadResult } from '../types';
  * PDFService - PDF読み込み・編集サービス
  */
 export class PDFService {
-    private thumbnailScale = 0.5;
-    private previewScale = 1.5;
+    private thumbnailScale = 0.3;
+    private previewScale = 2.0;
 
     /**
      * PDFファイルを読み込んでページデータを生成
@@ -40,7 +40,9 @@ export class PDFService {
      * PDFからページを抽出
      */
     async extractPages(pdfBytes: Uint8Array): Promise<PageData[]> {
-        const pdf = await pdfjsLib.getDocument({ data: pdfBytes }).promise;
+        // getDocumentに渡す前にコピーを作成（Workerへの転送でdetachされるため）
+        const pdfBytesForRender = pdfBytes.slice(0);
+        const pdf = await pdfjsLib.getDocument({ data: pdfBytesForRender }).promise;
         const pages: PageData[] = [];
 
         for (let i = 1; i <= pdf.numPages; i++) {
@@ -48,10 +50,11 @@ export class PDFService {
             const viewport = page.getViewport({ scale: 1 });
             const thumbnail = await this.renderThumbnail(page, this.thumbnailScale);
 
+            // 各ページ用に新しいコピーを作成（後でレンダリングに使用）
             pages.push({
                 id: uuidv4(),
                 type: 'pdf',
-                pdfBytes: pdfBytes,
+                pdfBytes: pdfBytes.slice(0),
                 thumbnail,
                 width: viewport.width,
                 height: viewport.height,
@@ -99,7 +102,9 @@ export class PDFService {
             throw new Error('Invalid page data');
         }
 
-        const pdf = await pdfjsLib.getDocument({ data: pageData.pdfBytes }).promise;
+        // ArrayBufferはWorkerへの転送後にdetachされるため、コピーを作成
+        const pdfBytesClone = pageData.pdfBytes.slice(0);
+        const pdf = await pdfjsLib.getDocument({ data: pdfBytesClone }).promise;
         const page = await pdf.getPage(pageData.originalPageIndex + 1);
 
         // キャンバスサイズに合わせてスケールを計算
@@ -115,7 +120,7 @@ export class PDFService {
     }
 
     /**
-     * 画像をCanvasにレンダリング
+     * 画像をCanvasにレンダリング（ページサイズに合わせてスケーリング）
      */
     private async renderImageToCanvas(
         canvas: HTMLCanvasElement,
@@ -124,14 +129,31 @@ export class PDFService {
         return new Promise((resolve, reject) => {
             const img = new Image();
             img.onload = () => {
-                canvas.width = img.width;
-                canvas.height = img.height;
+                // ページサイズに合わせたキャンバスサイズ（previewScaleを適用）
+                canvas.width = pageData.width * this.previewScale;
+                canvas.height = pageData.height * this.previewScale;
                 const ctx = canvas.getContext('2d')!;
-                ctx.drawImage(img, 0, 0);
+
+                // 背景を白で塗りつぶし
+                ctx.fillStyle = 'white';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                // 画像をページサイズにフィットするようにスケーリング
+                const scaleX = canvas.width / img.width;
+                const scaleY = canvas.height / img.height;
+                const scale = Math.min(scaleX, scaleY);
+
+                const scaledWidth = img.width * scale;
+                const scaledHeight = img.height * scale;
+                const x = (canvas.width - scaledWidth) / 2;
+                const y = (canvas.height - scaledHeight) / 2;
+
+                ctx.drawImage(img, x, y, scaledWidth, scaledHeight);
                 resolve();
             };
             img.onerror = reject;
-            img.src = pageData.thumbnail;
+            // フルサイズ画像があればそれを使用、なければサムネイルを使用
+            img.src = pageData.fullImage || pageData.thumbnail;
         });
     }
 
