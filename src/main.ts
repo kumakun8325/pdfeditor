@@ -3,6 +3,8 @@ import { PDFDocument, degrees, rgb, StandardFonts } from 'pdf-lib';
 import { PDFService } from './services/PDFService';
 import { ImageService } from './services/ImageService';
 import { KeyboardService } from './services/KeyboardService';
+import { UndoManager } from './managers/UndoManager';
+import { AnnotationManager } from './managers/AnnotationManager';
 import type { AppState, PageData, ToastType, TextAnnotation, HighlightAnnotation, UndoAction } from './types';
 import './styles/index.css';
 
@@ -35,9 +37,12 @@ class PDFEditorApp {
     private highlightStart: { x: number; y: number } | null = null;
     private highlightColor = '#ffff00'; // 黄色
 
-    // Undoスタック
-    private undoStack: UndoAction[] = [];
-    private readonly maxUndoStack = 20;
+    // マネージャー
+    private undoManager: UndoManager;
+
+    // Undoスタック (削除)
+    // private undoStack: UndoAction[] = [];
+    // private readonly maxUndoStack = 20;
 
     // DOM Elements
     private elements!: {
@@ -90,6 +95,7 @@ class PDFEditorApp {
         this.pdfService = new PDFService();
         this.imageService = new ImageService();
         this.keyboardService = new KeyboardService();
+        this.undoManager = new UndoManager();
     }
 
     /**
@@ -702,35 +708,7 @@ class PDFEditorApp {
         if (!page) return;
 
         const ctx = this.elements.previewCanvas.getContext('2d')!;
-        const scale = this.previewScale;
-
-        // ハイライト注釈を描画（テキストより先に描画して背景として表示）
-        if (page.highlightAnnotations && page.highlightAnnotations.length > 0) {
-            for (const highlight of page.highlightAnnotations) {
-                ctx.save();
-                ctx.fillStyle = highlight.color;
-                ctx.globalAlpha = 0.3;
-                const canvasX = highlight.x * scale;
-                const canvasY = (page.height - highlight.y) * scale;
-                ctx.fillRect(canvasX, canvasY, highlight.width * scale, highlight.height * scale);
-                ctx.restore();
-            }
-        }
-
-        // テキスト注釈を描画
-        if (page.textAnnotations && page.textAnnotations.length > 0) {
-            for (const annotation of page.textAnnotations) {
-                ctx.save();
-                ctx.font = `${annotation.fontSize * scale}px sans-serif`;
-                ctx.fillStyle = annotation.color;
-                ctx.textBaseline = 'top';
-                // PDF座標系をCanvas座標系に変換（Y軸反転）
-                const canvasX = annotation.x * scale;
-                const canvasY = (page.height - annotation.y) * scale;
-                ctx.fillText(annotation.text, canvasX, canvasY);
-                ctx.restore();
-            }
-        }
+        AnnotationManager.drawAnnotations(ctx, page, this.previewScale);
     }
 
     private redrawWithCachedBackground(): void {
@@ -859,8 +837,9 @@ class PDFEditorApp {
         const canvasY = (e.clientY - rect.top) * scaleY;
 
         // Canvas座標をPDF座標に変換
-        const pdfX = canvasX / this.previewScale;
-        const pdfY = page.height - (canvasY / this.previewScale);
+        const point = AnnotationManager.toPdfPoint(canvasX, canvasY, this.previewScale, page.height);
+        const pdfX = point.x;
+        const pdfY = point.y;
 
         // ハイライトモードの場合は開始位置を記録
         if (this.isHighlightMode) {
@@ -870,24 +849,14 @@ class PDFEditorApp {
         }
 
         // テキスト注釈のドラッグ
-        if (!page.textAnnotations || page.textAnnotations.length === 0) return;
-
-        // クリック位置にある注釈を検索（最後に追加されたものが優先）
-        for (let i = page.textAnnotations.length - 1; i >= 0; i--) {
-            const ann = page.textAnnotations[i];
-            // テキストの大まかなヒット領域を計算（広めに設定）
-            const textWidth = Math.max(ann.text.length * ann.fontSize * 0.6, 50);
-            const textHeight = ann.fontSize * 1.5;
-
-            if (pdfX >= ann.x - 10 && pdfX <= ann.x + textWidth + 10 &&
-                pdfY >= ann.y - textHeight - 10 && pdfY <= ann.y + 10) {
-                this.draggingAnnotation = ann;
-                this.dragOffset.x = pdfX - ann.x;
-                this.dragOffset.y = pdfY - ann.y;
-                this.elements.previewCanvas.style.cursor = 'grabbing';
-                e.preventDefault();
-                return;
-            }
+        const hitAnnotation = AnnotationManager.hitTestText(page, pdfX, pdfY);
+        if (hitAnnotation) {
+            this.draggingAnnotation = hitAnnotation;
+            this.dragOffset.x = pdfX - hitAnnotation.x;
+            this.dragOffset.y = pdfY - hitAnnotation.y;
+            this.elements.previewCanvas.style.cursor = 'grabbing';
+            e.preventDefault();
+            return;
         }
     }
 
@@ -930,8 +899,9 @@ class PDFEditorApp {
         if (!this.draggingAnnotation) return;
 
         // Canvas座標をPDF座標に変換
-        const pdfX = canvasX / this.previewScale;
-        const pdfY = page.height - (canvasY / this.previewScale);
+        const point = AnnotationManager.toPdfPoint(canvasX, canvasY, this.previewScale, page.height);
+        const pdfX = point.x;
+        const pdfY = point.y;
 
         // 位置を更新
         this.draggingAnnotation.x = pdfX - this.dragOffset.x;
@@ -955,8 +925,9 @@ class PDFEditorApp {
                 const canvasX = (e.clientX - rect.left) * scaleX;
                 const canvasY = (e.clientY - rect.top) * scaleY;
 
-                const pdfX = canvasX / this.previewScale;
-                const pdfY = page.height - (canvasY / this.previewScale);
+                const point = AnnotationManager.toPdfPoint(canvasX, canvasY, this.previewScale, page.height);
+                const pdfX = point.x;
+                const pdfY = point.y;
 
                 const startX = this.highlightStart.x;
                 const startY = this.highlightStart.y;
@@ -1016,14 +987,11 @@ class PDFEditorApp {
     }
 
     private pushUndo(action: UndoAction): void {
-        this.undoStack.push(action);
-        if (this.undoStack.length > this.maxUndoStack) {
-            this.undoStack.shift();
-        }
+        this.undoManager.push(action);
     }
 
     private undo(): void {
-        const action = this.undoStack.pop();
+        const action = this.undoManager.popUndo();
         if (!action) {
             this.showToast('取り消す操作がありません', 'warning');
             return;
