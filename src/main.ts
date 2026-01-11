@@ -30,10 +30,13 @@ class PDFEditorApp {
         btnOpenHero: HTMLButtonElement; // 追加
         btnSave: HTMLButtonElement;
         btnSplit: HTMLButtonElement;
+        btnClear: HTMLButtonElement;
         btnAddImage: HTMLButtonElement;
         btnMoveUp: HTMLButtonElement;
         btnMoveDown: HTMLButtonElement;
         btnRotate: HTMLButtonElement;
+        btnDuplicate: HTMLButtonElement;
+        btnDelete: HTMLButtonElement;
         btnExportPng: HTMLButtonElement;
         btnExportAll: HTMLButtonElement;
         btnTheme: HTMLButtonElement;
@@ -90,10 +93,13 @@ class PDFEditorApp {
             btnOpenHero: document.getElementById('btn-open-hero') as HTMLButtonElement, // 追加
             btnSave: document.getElementById('btn-save') as HTMLButtonElement,
             btnSplit: document.getElementById('btn-split') as HTMLButtonElement,
+            btnClear: document.getElementById('btn-clear') as HTMLButtonElement,
             btnAddImage: document.getElementById('btn-add-image') as HTMLButtonElement,
             btnMoveUp: document.getElementById('btn-move-up') as HTMLButtonElement,
             btnMoveDown: document.getElementById('btn-move-down') as HTMLButtonElement,
             btnRotate: document.getElementById('btn-rotate') as HTMLButtonElement,
+            btnDuplicate: document.getElementById('btn-duplicate') as HTMLButtonElement,
+            btnDelete: document.getElementById('btn-delete') as HTMLButtonElement,
             btnExportPng: document.getElementById('btn-export-png') as HTMLButtonElement,
             btnExportAll: document.getElementById('btn-export-all') as HTMLButtonElement,
             btnTheme: document.getElementById('btn-theme') as HTMLButtonElement,
@@ -171,6 +177,11 @@ class PDFEditorApp {
             this.rotatePage();
         });
 
+        // ページ複製
+        this.elements.btnDuplicate.addEventListener('click', () => {
+            this.duplicatePage();
+        });
+
         // 画像保存
         this.elements.btnExportPng.addEventListener('click', () => {
             this.exportCurrentPage();
@@ -184,6 +195,16 @@ class PDFEditorApp {
         // バイナリ分割
         this.elements.btnSplit.addEventListener('click', () => {
             this.splitAndDownload();
+        });
+
+        // クリア
+        this.elements.btnClear.addEventListener('click', () => {
+            this.clearPages();
+        });
+
+        // ページ削除（ボタン）
+        this.elements.btnDelete.addEventListener('click', () => {
+            this.deleteSelectedPage();
         });
 
         // テーマ切り替え
@@ -426,6 +447,31 @@ class PDFEditorApp {
         this.showToast(`ページを90°回転しました`, 'success');
     }
 
+    private duplicatePage(): void {
+        if (this.state.selectedPageIndex < 0 || this.state.pages.length === 0) return;
+
+        const originalPage = this.state.pages[this.state.selectedPageIndex];
+        // ディープコピーを作成
+        const duplicatedPage: PageData = {
+            ...originalPage,
+            id: crypto.randomUUID(),
+        };
+
+        // 選択ページの次に挿入
+        this.state.pages = this.pdfService.insertPageAt(
+            this.state.pages,
+            duplicatedPage,
+            this.state.selectedPageIndex + 1
+        );
+        this.state.selectedPageIndex = this.state.selectedPageIndex + 1;
+
+        this.renderPageList();
+        this.updateMainView();
+        this.updatePageNav();
+        this.updateUI();
+        this.showToast('ページを複製しました', 'success');
+    }
+
     private renderPageList(): void {
         this.elements.pageList.innerHTML = '';
 
@@ -577,12 +623,30 @@ class PDFEditorApp {
         this.elements.btnMoveUp.disabled = !hasPages || selectedIndex <= 0;
         this.elements.btnMoveDown.disabled = !hasPages || selectedIndex >= this.state.pages.length - 1;
         this.elements.btnRotate.disabled = !hasPages || selectedIndex < 0;
+        this.elements.btnDuplicate.disabled = !hasPages || selectedIndex < 0;
+        this.elements.btnDelete.disabled = !hasPages || selectedIndex < 0;
+        this.elements.btnClear.disabled = !hasPages;
         this.elements.btnExportPng.disabled = !hasPages || selectedIndex < 0;
         this.elements.btnExportAll.disabled = !hasPages;
 
         this.elements.pageCount.textContent = hasPages
             ? `${this.state.pages.length}ページ`
             : '';
+    }
+
+    private clearPages(): void {
+        if (this.state.pages.length === 0) return;
+
+        this.state.pages = [];
+        this.state.selectedPageIndex = -1;
+        this.state.originalPdfBytes = null;
+
+        this.renderPageList();
+        this.elements.emptyState.style.display = 'flex';
+        this.elements.pagePreview.style.display = 'none';
+        this.elements.pageNav.style.display = 'none';
+        this.updateUI();
+        this.showToast('ページをクリアしました', 'success');
     }
 
     private async savePDF(): Promise<void> {
