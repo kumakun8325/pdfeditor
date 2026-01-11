@@ -129,6 +129,25 @@ export class PDFService {
     }
 
     /**
+     * 画像をCanvasにセンタリングしてフィットさせて描画
+     */
+    private drawImageFitToCanvas(
+        ctx: CanvasRenderingContext2D,
+        img: HTMLImageElement,
+        canvasWidth: number,
+        canvasHeight: number
+    ): void {
+        const scaleX = canvasWidth / img.width;
+        const scaleY = canvasHeight / img.height;
+        const scale = Math.min(scaleX, scaleY);
+        const scaledWidth = img.width * scale;
+        const scaledHeight = img.height * scale;
+        const x = (canvasWidth - scaledWidth) / 2;
+        const y = (canvasHeight - scaledHeight) / 2;
+        ctx.drawImage(img, x, y, scaledWidth, scaledHeight);
+    }
+
+    /**
      * 画像をCanvasにレンダリング（ページサイズに合わせてスケーリング）
      */
     private async renderImageToCanvas(
@@ -151,17 +170,7 @@ export class PDFService {
                 ctx.fillStyle = 'white';
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-                // 画像をページサイズにフィットするようにスケーリング
-                const scaleX = canvas.width / img.width;
-                const scaleY = canvas.height / img.height;
-                const scale = Math.min(scaleX, scaleY);
-
-                const scaledWidth = img.width * scale;
-                const scaledHeight = img.height * scale;
-                const x = (canvas.width - scaledWidth) / 2;
-                const y = (canvas.height - scaledHeight) / 2;
-
-                ctx.drawImage(img, x, y, scaledWidth, scaledHeight);
+                this.drawImageFitToCanvas(ctx, img, canvas.width, canvas.height);
                 resolve();
             };
             img.onerror = reject;
@@ -256,16 +265,7 @@ export class PDFService {
                 ctx.fillStyle = 'white';
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-                const scaleX = canvas.width / img.width;
-                const scaleY = canvas.height / img.height;
-                const scale = Math.min(scaleX, scaleY);
-
-                const scaledWidth = img.width * scale;
-                const scaledHeight = img.height * scale;
-                const x = (canvas.width - scaledWidth) / 2;
-                const y = (canvas.height - scaledHeight) / 2;
-
-                ctx.drawImage(img, x, y, scaledWidth, scaledHeight);
+                this.drawImageFitToCanvas(ctx, img, canvas.width, canvas.height);
 
                 canvas.toBlob((blob) => {
                     if (blob) resolve(blob);
@@ -287,6 +287,41 @@ export class PDFService {
             const blob = await this.exportPageAsImage(pages[i]);
             const fileName = `page_${String(i + 1).padStart(3, '0')}.png`;
             zip.file(fileName, blob);
+        }
+
+        return await zip.generateAsync({ type: 'blob' });
+    }
+
+    /**
+     * バイナリデータを指定サイズで分割
+     * @param data - 分割対象のバイナリデータ
+     * @param maxSize - 最大サイズ (デフォルト: 10MB)
+     * @returns 分割されたUint8Array配列
+     */
+    splitBinary(data: Uint8Array, maxSize: number = 10 * 1024 * 1024): Uint8Array[] {
+        const chunks: Uint8Array[] = [];
+        let offset = 0;
+
+        while (offset < data.length) {
+            const end = Math.min(offset + maxSize, data.length);
+            chunks.push(data.slice(offset, end));
+            offset = end;
+        }
+
+        return chunks;
+    }
+
+    /**
+     * PDFをバイナリ分割してZIPとしてエクスポート
+     * 受信側で cat xxx.pdf.* > xxx.pdf で結合可能
+     */
+    async splitBinaryAsZip(pdfBytes: Uint8Array, baseName: string, maxSize: number = 10 * 1024 * 1024): Promise<Blob> {
+        const chunks = this.splitBinary(pdfBytes, maxSize);
+        const zip = new JSZip();
+
+        for (let i = 0; i < chunks.length; i++) {
+            const fileName = `${baseName}.${String(i + 1).padStart(3, '0')}`;
+            zip.file(fileName, chunks[i]);
         }
 
         return await zip.generateAsync({ type: 'blob' });

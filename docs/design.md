@@ -127,6 +127,12 @@ class PDFService {
 
     // 一括エクスポート（ZIP）
     async exportAllPagesAsZip(pages: PageData[]): Promise<Blob>;
+
+    // バイナリ分割
+    splitBinary(data: Uint8Array, maxSize?: number): Uint8Array[];
+
+    // バイナリ分割してZIPでダウンロード（catコマンドで結合可能）
+    async splitBinaryAsZip(pdfBytes: Uint8Array, baseName: string, maxSize?: number): Promise<Blob>;
 }
 ```
 
@@ -169,7 +175,7 @@ class KeyboardService {
 
 ```
 +------------------------------------------------------------------+
-|  [📄 開く]  [💾 保存] [🖼️ 画像] [📦 全保存]             [🌙 Theme]  |  ← Toolbar
+|  [開く] [保存] [分割] [画像] [上へ] [下へ] [画像] [全保存]  [🌙 Theme]  |  ← Toolbar
 +------------------+-----------------------------------------------+
 |                  |                                               |
 |  +-----------+   |   [ファイルを開く]                            |
@@ -310,3 +316,39 @@ sequenceDiagram
 - **ArrayBuffer detachment**: pdfjs-distはWorkerにArrayBufferを転送するとdetachされるため、事前にslice()でコピーが必要
 - **暗号化PDF**: 非対応
 - **大容量ファイル**: 100MB以上のPDFはパフォーマンス保証外
+
+---
+
+## 11. バイナリ分割機能
+
+メール添付の容量制限（10MB）に対応するための機能。
+
+### 11.1 処理フロー
+
+```mermaid
+flowchart LR
+    A[PDF 25MB] --> B[分割ボタン]
+    B --> C[document.pdf.001 - 10MB]
+    B --> D[document.pdf.002 - 10MB]
+    B --> E[document.pdf.003 - 5MB]
+    C --> F[ZIPダウンロード]
+    D --> F
+    E --> F
+```
+
+### 11.2 受信側での結合方法
+
+**Linux/Mac:**
+```bash
+cat document.pdf.* > document.pdf
+```
+
+**Windows (コマンドプロンプト):**
+```cmd
+copy /b document.pdf.001+document.pdf.002+document.pdf.003 document.pdf
+```
+
+**Windows (PowerShell):**
+```powershell
+Get-Content document.pdf.* -Encoding Byte -ReadCount 0 | Set-Content document.pdf -Encoding Byte
+```

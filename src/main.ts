@@ -1,17 +1,12 @@
 import { saveAs } from 'file-saver';
 import { PDFDocument } from 'pdf-lib';
-import * as pdfjsLib from 'pdfjs-dist';
 import { PDFService } from './services/PDFService';
 import { ImageService } from './services/ImageService';
 import { KeyboardService } from './services/KeyboardService';
 import type { AppState, PageData, ToastType } from './types';
 import './styles/index.css';
 
-// Worker設定
-pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-    'pdfjs-dist/build/pdf.worker.min.mjs',
-    import.meta.url
-).toString();
+// Worker設定はPDFService側で行われる
 
 /**
  * PDF Editor メインアプリケーション
@@ -34,6 +29,7 @@ class PDFEditorApp {
         btnOpen: HTMLButtonElement;
         btnOpenHero: HTMLButtonElement; // 追加
         btnSave: HTMLButtonElement;
+        btnSplit: HTMLButtonElement;
         btnAddImage: HTMLButtonElement;
         btnMoveUp: HTMLButtonElement;
         btnMoveDown: HTMLButtonElement;
@@ -92,6 +88,7 @@ class PDFEditorApp {
             btnOpen: document.getElementById('btn-open') as HTMLButtonElement,
             btnOpenHero: document.getElementById('btn-open-hero') as HTMLButtonElement, // 追加
             btnSave: document.getElementById('btn-save') as HTMLButtonElement,
+            btnSplit: document.getElementById('btn-split') as HTMLButtonElement,
             btnAddImage: document.getElementById('btn-add-image') as HTMLButtonElement,
             btnMoveUp: document.getElementById('btn-move-up') as HTMLButtonElement,
             btnMoveDown: document.getElementById('btn-move-down') as HTMLButtonElement,
@@ -177,6 +174,11 @@ class PDFEditorApp {
             this.exportAllPages();
         });
 
+        // バイナリ分割
+        this.elements.btnSplit.addEventListener('click', () => {
+            this.splitAndDownload();
+        });
+
         // テーマ切り替え
         this.elements.btnTheme.addEventListener('click', () => {
             this.toggleTheme();
@@ -195,36 +197,25 @@ class PDFEditorApp {
         });
     }
 
+    // クロスOS対応のショートカット登録ヘルパー
+    private addCrossOsShortcut(key: string, callback: () => void): void {
+        this.keyboardService.addShortcut(key, ['ctrl'], callback);
+        this.keyboardService.addShortcut(key, ['meta'], callback);
+    }
+
     private setupKeyboardShortcuts(): void {
         this.keyboardService.init();
 
         // Ctrl/Cmd + O: 開く
-        this.keyboardService.addShortcut('o', ['ctrl'], () => {
-            this.elements.fileInput.click();
-        });
-        this.keyboardService.addShortcut('o', ['meta'], () => {
-            this.elements.fileInput.click();
-        });
+        this.addCrossOsShortcut('o', () => this.elements.fileInput.click());
 
         // Ctrl/Cmd + S: 保存
-        this.keyboardService.addShortcut('s', ['ctrl'], () => {
-            if (this.state.pages.length > 0) {
-                this.savePDF();
-            }
-        });
-        this.keyboardService.addShortcut('s', ['meta'], () => {
-            if (this.state.pages.length > 0) {
-                this.savePDF();
-            }
+        this.addCrossOsShortcut('s', () => {
+            if (this.state.pages.length > 0) this.savePDF();
         });
 
         // Ctrl/Cmd + D: ページ削除
-        this.keyboardService.addShortcut('d', ['ctrl'], () => {
-            this.deleteSelectedPage();
-        });
-        this.keyboardService.addShortcut('d', ['meta'], () => {
-            this.deleteSelectedPage();
-        });
+        this.addCrossOsShortcut('d', () => this.deleteSelectedPage());
 
         // 矢印キー: ページ選択
         this.keyboardService.addShortcut('arrowup', [], () => {
@@ -380,38 +371,30 @@ class PDFEditorApp {
         this.showToast('ページを削除しました', 'success');
     }
 
-    private movePageUp(): void {
+    private movePage(direction: 'up' | 'down'): void {
         const index = this.state.selectedPageIndex;
-        if (index <= 0 || this.state.pages.length < 2) return;
+        const newIndex = direction === 'up' ? index - 1 : index + 1;
 
-        this.state.pages = this.pdfService.reorderPages(
-            this.state.pages,
-            index,
-            index - 1
-        );
-        this.state.selectedPageIndex = index - 1;
+        // バリデーション
+        if (index < 0 || this.state.pages.length < 2) return;
+        if (direction === 'up' && index <= 0) return;
+        if (direction === 'down' && index >= this.state.pages.length - 1) return;
+
+        this.state.pages = this.pdfService.reorderPages(this.state.pages, index, newIndex);
+        this.state.selectedPageIndex = newIndex;
 
         this.renderPageList();
         this.updateMainView();
         this.updateUI();
-        this.showToast('ページを上に移動しました', 'success');
+        this.showToast(`ページを${direction === 'up' ? '上' : '下'}に移動しました`, 'success');
+    }
+
+    private movePageUp(): void {
+        this.movePage('up');
     }
 
     private movePageDown(): void {
-        const index = this.state.selectedPageIndex;
-        if (index < 0 || index >= this.state.pages.length - 1) return;
-
-        this.state.pages = this.pdfService.reorderPages(
-            this.state.pages,
-            index,
-            index + 1
-        );
-        this.state.selectedPageIndex = index + 1;
-
-        this.renderPageList();
-        this.updateMainView();
-        this.updateUI();
-        this.showToast('ページを下に移動しました', 'success');
+        this.movePage('down');
     }
 
     private selectPage(index: number): void {
@@ -567,6 +550,7 @@ class PDFEditorApp {
         const selectedIndex = this.state.selectedPageIndex;
 
         this.elements.btnSave.disabled = !hasPages;
+        this.elements.btnSplit.disabled = !hasPages;
         this.elements.btnMoveUp.disabled = !hasPages || selectedIndex <= 0;
         this.elements.btnMoveDown.disabled = !hasPages || selectedIndex >= this.state.pages.length - 1;
         this.elements.btnExportPng.disabled = !hasPages || selectedIndex < 0;
@@ -644,6 +628,49 @@ class PDFEditorApp {
         this.hideLoading();
     }
 
+    private async splitAndDownload(): Promise<void> {
+        if (this.state.pages.length === 0) return;
+
+        this.showLoading('PDFを分割中...');
+
+        try {
+            // まずPDFを生成
+            const pdfDoc = await PDFDocument.create();
+
+            for (const page of this.state.pages) {
+                if (page.type === 'image') {
+                    await this.imageService.embedImageToPdf(pdfDoc, page);
+                } else if (page.pdfBytes && page.originalPageIndex !== undefined) {
+                    const srcDoc = await PDFDocument.load(page.pdfBytes);
+                    const [copiedPage] = await pdfDoc.copyPages(srcDoc, [page.originalPageIndex]);
+                    pdfDoc.addPage(copiedPage);
+                }
+            }
+
+            const pdfBytes = await pdfDoc.save();
+            const pdfSize = pdfBytes.length;
+            const maxSize = 10 * 1024 * 1024; // 10MB
+
+            // サイズが10MB以下なら分割不要
+            if (pdfSize <= maxSize) {
+                this.showToast('10MB以下のため分割不要です。通常保存を使用してください。', 'warning');
+                this.hideLoading();
+                return;
+            }
+
+            // バイナリ分割してZIPでダウンロード
+            const blob = await this.pdfService.splitBinaryAsZip(new Uint8Array(pdfBytes), 'document.pdf');
+            const chunkCount = Math.ceil(pdfSize / maxSize);
+            saveAs(blob, 'document_split.zip');
+            this.showToast(`${chunkCount}個のファイルに分割しました`, 'success');
+        } catch (error) {
+            console.error('Split error:', error);
+            this.showToast('分割に失敗しました', 'error');
+        }
+
+        this.hideLoading();
+    }
+
     private downloadPDF(pdfBytes: Uint8Array): void {
         const arrayBuffer = pdfBytes.buffer.slice(pdfBytes.byteOffset, pdfBytes.byteOffset + pdfBytes.byteLength) as ArrayBuffer;
         const blob = new Blob([arrayBuffer], { type: 'application/pdf' });
@@ -655,33 +682,24 @@ class PDFEditorApp {
         URL.revokeObjectURL(url);
     }
 
+    private updateThemeIcons(): void {
+        this.elements.iconLight.style.display = this.state.isDarkMode ? 'none' : 'block';
+        this.elements.iconDark.style.display = this.state.isDarkMode ? 'block' : 'none';
+    }
+
     private toggleTheme(): void {
         this.state.isDarkMode = !this.state.isDarkMode;
         document.documentElement.classList.toggle('dark', this.state.isDarkMode);
-
-        this.elements.iconLight.style.display = this.state.isDarkMode
-            ? 'none'
-            : 'block';
-        this.elements.iconDark.style.display = this.state.isDarkMode
-            ? 'block'
-            : 'none';
-
+        this.updateThemeIcons();
         localStorage.setItem('theme', this.state.isDarkMode ? 'dark' : 'light');
     }
 
     private loadThemePreference(): void {
         const saved = localStorage.getItem('theme');
         const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-
         this.state.isDarkMode = saved === 'dark' || (!saved && prefersDark);
         document.documentElement.classList.toggle('dark', this.state.isDarkMode);
-
-        this.elements.iconLight.style.display = this.state.isDarkMode
-            ? 'none'
-            : 'block';
-        this.elements.iconDark.style.display = this.state.isDarkMode
-            ? 'block'
-            : 'none';
+        this.updateThemeIcons();
     }
 
     private showLoading(text: string): void {
