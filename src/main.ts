@@ -30,7 +30,11 @@ class PDFEditorApp {
     private draggingAnnotation: TextAnnotation | null = null;
     private dragOffset = { x: 0, y: 0 };
     private draggingStart: { x: number; y: number } | null = null;
-    private readonly previewScale = 1.5;
+    private readonly baseScale = 1.5;
+    private currentZoom = 1.0;
+    private get previewScale(): number {
+        return this.baseScale * this.currentZoom;
+    }
     private backgroundImageData: ImageData | null = null;
 
     // ハイライトモード
@@ -40,6 +44,11 @@ class PDFEditorApp {
 
     // マネージャー
     private undoManager: UndoManager;
+
+    // レンダリング状態管理
+    private renderingRequestId = 0;
+    private isRendering = false;
+    private hasPendingRenderRequest = false;
 
     // Undoスタック (削除)
     // private undoStack: UndoAction[] = [];
@@ -90,6 +99,11 @@ class PDFEditorApp {
         textColor: HTMLInputElement;
         // ハイライト
         btnHighlight: HTMLButtonElement;
+        // ズーム
+        btnZoomIn: HTMLButtonElement;
+        btnZoomOut: HTMLButtonElement;
+        btnZoomReset: HTMLButtonElement;
+        zoomLevel: HTMLSpanElement;
     };
 
     constructor() {
@@ -165,6 +179,11 @@ class PDFEditorApp {
             textColor: document.getElementById('text-color') as HTMLInputElement,
             // ハイライト
             btnHighlight: document.getElementById('btn-highlight') as HTMLButtonElement,
+            // ズーム
+            btnZoomIn: document.getElementById('btn-zoom-in') as HTMLButtonElement,
+            btnZoomOut: document.getElementById('btn-zoom-out') as HTMLButtonElement,
+            btnZoomReset: document.getElementById('btn-zoom-reset') as HTMLButtonElement,
+            zoomLevel: document.getElementById('zoom-level') as HTMLSpanElement,
         };
     }
 
@@ -294,6 +313,23 @@ class PDFEditorApp {
         this.elements.btnHighlight.addEventListener('click', () => {
             this.toggleHighlightMode();
         });
+
+        // ズーム操作
+        this.elements.btnZoomIn.addEventListener('click', () => this.zoomIn());
+        this.elements.btnZoomOut.addEventListener('click', () => this.zoomOut());
+        this.elements.btnZoomReset.addEventListener('click', () => this.resetZoom());
+
+        // Ctrl + ホイールでズーム
+        window.addEventListener('wheel', (e) => {
+            if (e.ctrlKey) {
+                e.preventDefault();
+                if (e.deltaY < 0) {
+                    this.zoomIn();
+                } else {
+                    this.zoomOut();
+                }
+            }
+        }, { passive: false });
     }
 
     // クロスOS対応のショートカット登録ヘルパー
@@ -326,6 +362,12 @@ class PDFEditorApp {
 
         // Ctrl/Cmd + Z: 元に戻す
         this.addCrossOsShortcut('z', () => this.undo());
+
+        // Ctrl + +, Ctrl + -: ズーム (ブラウザのデフォルト挙動を抑制してカスタムズーム)
+        // 注意: ブラウザのズームを完全に防ぐのは難しいが、可能な範囲で対応
+        this.keyboardService.addShortcut('=', ['ctrl'], () => this.zoomIn()); // + key
+        this.keyboardService.addShortcut('-', ['ctrl'], () => this.zoomOut()); // - key
+        this.keyboardService.addShortcut('0', ['ctrl'], () => this.resetZoom());
     }
 
     private setupDropZone(): void {
@@ -690,25 +732,56 @@ class PDFEditorApp {
             return;
         }
 
+        // 既にレンダリング中なら、リクエストを予約して終了
+        if (this.isRendering) {
+            console.log('Skipping render: already rendering');
+            this.hasPendingRenderRequest = true;
+            return;
+        }
+
+        this.isRendering = true;
+        this.hasPendingRenderRequest = false;
+
+        // request IDは不要になったが、念のため残すか、削除してもよい。
+        // ここでは排他制御によりIDチェックは必須ではなくなる
+        ++this.renderingRequestId;
+
         this.elements.emptyState.style.display = 'none';
         this.elements.pagePreview.style.display = 'flex';
         this.elements.pageNav.style.display = 'flex';
 
         const page = this.state.pages[this.state.selectedPageIndex];
-        await this.pdfService.renderToCanvas(this.elements.previewCanvas, page);
 
-        // 背景をキャッシュ
-        const ctx = this.elements.previewCanvas.getContext('2d')!;
-        this.backgroundImageData = ctx.getImageData(
-            0, 0,
-            this.elements.previewCanvas.width,
-            this.elements.previewCanvas.height
-        );
+        try {
+            await this.pdfService.renderToCanvas(
+                this.elements.previewCanvas,
+                page,
+                this.previewScale
+            );
 
-        // テキスト注釈を描画
-        this.drawTextAnnotations();
+            // 背景をキャッシュ
+            const ctx = this.elements.previewCanvas.getContext('2d')!;
+            this.backgroundImageData = ctx.getImageData(
+                0, 0,
+                this.elements.previewCanvas.width,
+                this.elements.previewCanvas.height
+            );
 
-        this.updatePageNav();
+            // テキスト注釈を描画
+            this.drawTextAnnotations();
+
+            this.updatePageNav();
+        } catch (error) {
+            console.error('Render error:', error);
+            this.showToast('プレビューの表示に失敗しました', 'error');
+        } finally {
+            this.isRendering = false;
+
+            // 待機中のリクエストがあれば実行
+            if (this.hasPendingRenderRequest) {
+                this.updateMainView();
+            }
+        }
     }
 
     private drawTextAnnotations(): void {
@@ -1335,6 +1408,33 @@ class PDFEditorApp {
         setTimeout(() => {
             toast.remove();
         }, 3000);
+    }
+
+    // ズーム機能
+    private setZoom(zoom: number): void {
+        // 50% ~ 200% の範囲に制限
+        const newZoom = Math.max(0.5, Math.min(2.0, zoom));
+        if (this.currentZoom !== newZoom) {
+            this.currentZoom = newZoom;
+            this.elements.zoomLevel.textContent = `${Math.round(this.currentZoom * 100)}%`;
+
+            // 背景などを再描画
+            if (this.state.pages.length > 0) {
+                this.updateMainView();
+            }
+        }
+    }
+
+    private zoomIn(): void {
+        this.setZoom(this.currentZoom + 0.25);
+    }
+
+    private zoomOut(): void {
+        this.setZoom(this.currentZoom - 0.25);
+    }
+
+    private resetZoom(): void {
+        this.setZoom(1.0);
     }
 }
 

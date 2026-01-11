@@ -17,7 +17,7 @@ import JSZip from 'jszip';
  */
 export class PDFService {
     private thumbnailScale = 0.3;
-    private previewScale = 2.0;
+
 
     /**
      * PDFファイルを読み込んでページデータを生成
@@ -92,10 +92,11 @@ export class PDFService {
      */
     async renderToCanvas(
         canvas: HTMLCanvasElement,
-        pageData: PageData
+        pageData: PageData,
+        scale: number = 2.0 // デフォルト値
     ): Promise<void> {
         if (pageData.type === 'image') {
-            await this.renderImageToCanvas(canvas, pageData);
+            await this.renderImageToCanvas(canvas, pageData, scale);
             return;
         }
 
@@ -111,7 +112,7 @@ export class PDFService {
         // キャンバスサイズに合わせてスケールを計算（ユーザー回転を加算）
         const userRotation = pageData.rotation || 0;
         const viewport = page.getViewport({
-            scale: this.previewScale,
+            scale: scale,
             rotation: page.rotate + userRotation
         });
         canvas.width = viewport.width;
@@ -153,7 +154,8 @@ export class PDFService {
      */
     private async renderImageToCanvas(
         canvas: HTMLCanvasElement,
-        pageData: PageData
+        pageData: PageData,
+        scale: number
     ): Promise<void> {
         return new Promise((resolve, reject) => {
             const img = new Image();
@@ -163,11 +165,11 @@ export class PDFService {
 
                 // 90/270度回転時は幅と高さを入れ替え
                 const canvasWidth = isRotated90or270
-                    ? pageData.height * this.previewScale
-                    : pageData.width * this.previewScale;
+                    ? pageData.height * scale
+                    : pageData.width * scale;
                 const canvasHeight = isRotated90or270
-                    ? pageData.width * this.previewScale
-                    : pageData.height * this.previewScale;
+                    ? pageData.width * scale
+                    : pageData.height * scale;
 
                 canvas.width = canvasWidth;
                 canvas.height = canvasHeight;
@@ -195,9 +197,9 @@ export class PDFService {
                 // 画像をフィットして描画
                 const scaleX = drawWidth / img.width;
                 const scaleY = drawHeight / img.height;
-                const scale = Math.min(scaleX, scaleY);
-                const scaledWidth = img.width * scale;
-                const scaledHeight = img.height * scale;
+                const imgScale = Math.min(scaleX, scaleY);
+                const scaledWidth = img.width * imgScale;
+                const scaledHeight = img.height * imgScale;
                 const x = offsetX + (drawWidth - scaledWidth) / 2;
                 const y = offsetY + (drawHeight - scaledHeight) / 2;
 
