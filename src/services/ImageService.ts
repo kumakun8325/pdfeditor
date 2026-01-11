@@ -1,4 +1,4 @@
-import { PDFDocument } from 'pdf-lib';
+import { PDFDocument, PDFPage } from 'pdf-lib';
 import { v4 as uuidv4 } from '../utils/uuid';
 import type { PageData } from '../types';
 
@@ -95,11 +95,12 @@ export class ImageService {
 
     /**
      * 画像をPDFページとして埋め込む
+     * @returns 追加されたPDFPage（回転適用などに使用）
      */
     async embedImageToPdf(
         pdfDoc: PDFDocument,
         pageData: PageData
-    ): Promise<void> {
+    ): Promise<PDFPage> {
         if (!pageData.imageBytes) {
             throw new Error('Image bytes not found');
         }
@@ -132,5 +133,7 @@ export class ImageService {
             width: scaled.width,
             height: scaled.height,
         });
+
+        return page;
     }
 }

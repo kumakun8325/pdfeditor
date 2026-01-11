@@ -28,6 +28,8 @@ export interface PageData {
     originalHeight?: number;
     /** 元PDFのページインデックス（PDF由来の場合） */
     originalPageIndex?: number;
+    /** 回転角度 (0, 90, 180, 270) */
+    rotation?: number;
 }
 
 /**

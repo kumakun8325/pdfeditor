@@ -1,5 +1,5 @@
 import { saveAs } from 'file-saver';
-import { PDFDocument } from 'pdf-lib';
+import { PDFDocument, degrees } from 'pdf-lib';
 import { PDFService } from './services/PDFService';
 import { ImageService } from './services/ImageService';
 import { KeyboardService } from './services/KeyboardService';
@@ -33,6 +33,7 @@ class PDFEditorApp {
         btnAddImage: HTMLButtonElement;
         btnMoveUp: HTMLButtonElement;
         btnMoveDown: HTMLButtonElement;
+        btnRotate: HTMLButtonElement;
         btnExportPng: HTMLButtonElement;
         btnExportAll: HTMLButtonElement;
         btnTheme: HTMLButtonElement;
@@ -92,6 +93,7 @@ class PDFEditorApp {
             btnAddImage: document.getElementById('btn-add-image') as HTMLButtonElement,
             btnMoveUp: document.getElementById('btn-move-up') as HTMLButtonElement,
             btnMoveDown: document.getElementById('btn-move-down') as HTMLButtonElement,
+            btnRotate: document.getElementById('btn-rotate') as HTMLButtonElement,
             btnExportPng: document.getElementById('btn-export-png') as HTMLButtonElement,
             btnExportAll: document.getElementById('btn-export-all') as HTMLButtonElement,
             btnTheme: document.getElementById('btn-theme') as HTMLButtonElement,
@@ -162,6 +164,11 @@ class PDFEditorApp {
 
         this.elements.btnMoveDown.addEventListener('click', () => {
             this.movePageDown();
+        });
+
+        // ページ回転
+        this.elements.btnRotate.addEventListener('click', () => {
+            this.rotatePage();
         });
 
         // 画像保存
@@ -407,6 +414,18 @@ class PDFEditorApp {
         this.updateUI();
     }
 
+    private rotatePage(): void {
+        if (this.state.selectedPageIndex < 0 || this.state.pages.length === 0) return;
+
+        const page = this.state.pages[this.state.selectedPageIndex];
+        const currentRotation = page.rotation || 0;
+        page.rotation = (currentRotation + 90) % 360;
+
+        this.renderPageList();
+        this.updateMainView();
+        this.showToast(`ページを90°回転しました`, 'success');
+    }
+
     private renderPageList(): void {
         this.elements.pageList.innerHTML = '';
 
@@ -429,6 +448,10 @@ class PDFEditorApp {
         const img = document.createElement('img');
         img.src = page.thumbnail;
         img.alt = `ページ ${index + 1}`;
+        // 回転を適用
+        if (page.rotation) {
+            img.style.transform = `rotate(${page.rotation}deg)`;
+        }
         container.appendChild(img);
 
         // ページ番号
@@ -553,6 +576,7 @@ class PDFEditorApp {
         this.elements.btnSplit.disabled = !hasPages;
         this.elements.btnMoveUp.disabled = !hasPages || selectedIndex <= 0;
         this.elements.btnMoveDown.disabled = !hasPages || selectedIndex >= this.state.pages.length - 1;
+        this.elements.btnRotate.disabled = !hasPages || selectedIndex < 0;
         this.elements.btnExportPng.disabled = !hasPages || selectedIndex < 0;
         this.elements.btnExportAll.disabled = !hasPages;
 
@@ -571,13 +595,22 @@ class PDFEditorApp {
 
             for (const page of this.state.pages) {
                 if (page.type === 'image') {
-                    await this.imageService.embedImageToPdf(pdfDoc, page);
+                    const addedPage = await this.imageService.embedImageToPdf(pdfDoc, page);
+                    // 画像ページの回転を適用
+                    if (page.rotation && addedPage) {
+                        addedPage.setRotation(degrees(page.rotation));
+                    }
                 } else if (page.pdfBytes && page.originalPageIndex !== undefined) {
                     // PDF由来のページをコピー
                     const srcDoc = await PDFDocument.load(page.pdfBytes);
                     const [copiedPage] = await pdfDoc.copyPages(srcDoc, [
                         page.originalPageIndex,
                     ]);
+                    // ユーザー回転を適用
+                    if (page.rotation) {
+                        const currentRotation = copiedPage.getRotation().angle;
+                        copiedPage.setRotation(degrees(currentRotation + page.rotation));
+                    }
                     pdfDoc.addPage(copiedPage);
                 }
             }

@@ -108,10 +108,11 @@ export class PDFService {
         const pdf = await pdfjsLib.getDocument({ data: pdfBytesClone }).promise;
         const page = await pdf.getPage(pageData.originalPageIndex + 1);
 
-        // キャンバスサイズに合わせてスケールを計算
+        // キャンバスサイズに合わせてスケールを計算（ユーザー回転を加算）
+        const userRotation = pageData.rotation || 0;
         const viewport = page.getViewport({
             scale: this.previewScale,
-            rotation: page.rotate
+            rotation: page.rotate + userRotation
         });
         canvas.width = viewport.width;
         canvas.height = viewport.height;
@@ -157,9 +158,19 @@ export class PDFService {
         return new Promise((resolve, reject) => {
             const img = new Image();
             img.onload = () => {
-                // ページサイズに合わせたキャンバスサイズ（previewScaleを適用）
-                canvas.width = pageData.width * this.previewScale;
-                canvas.height = pageData.height * this.previewScale;
+                const rotation = pageData.rotation || 0;
+                const isRotated90or270 = rotation === 90 || rotation === 270;
+
+                // 90/270度回転時は幅と高さを入れ替え
+                const canvasWidth = isRotated90or270
+                    ? pageData.height * this.previewScale
+                    : pageData.width * this.previewScale;
+                const canvasHeight = isRotated90or270
+                    ? pageData.width * this.previewScale
+                    : pageData.height * this.previewScale;
+
+                canvas.width = canvasWidth;
+                canvas.height = canvasHeight;
                 const ctx = canvas.getContext('2d')!;
 
                 // 変形行列リセット
@@ -170,7 +181,27 @@ export class PDFService {
                 ctx.fillStyle = 'white';
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-                this.drawImageFitToCanvas(ctx, img, canvas.width, canvas.height);
+                // 回転を適用
+                ctx.translate(canvas.width / 2, canvas.height / 2);
+                ctx.rotate((rotation * Math.PI) / 180);
+                ctx.translate(-canvas.width / 2, -canvas.height / 2);
+
+                // 回転後の描画サイズを計算
+                const drawWidth = isRotated90or270 ? canvasHeight : canvasWidth;
+                const drawHeight = isRotated90or270 ? canvasWidth : canvasHeight;
+                const offsetX = isRotated90or270 ? (canvasWidth - drawWidth) / 2 : 0;
+                const offsetY = isRotated90or270 ? (canvasHeight - drawHeight) / 2 : 0;
+
+                // 画像をフィットして描画
+                const scaleX = drawWidth / img.width;
+                const scaleY = drawHeight / img.height;
+                const scale = Math.min(scaleX, scaleY);
+                const scaledWidth = img.width * scale;
+                const scaledHeight = img.height * scale;
+                const x = offsetX + (drawWidth - scaledWidth) / 2;
+                const y = offsetY + (drawHeight - scaledHeight) / 2;
+
+                ctx.drawImage(img, x, y, scaledWidth, scaledHeight);
                 resolve();
             };
             img.onerror = reject;
