@@ -268,6 +268,10 @@ class KeyboardService {
 | `Cmd + S` | PDFを保存 | Mac |
 | `Ctrl + D` | 選択ページ削除 | Windows |
 | `Cmd + D` | 選択ページ削除 | Mac |
+| `Ctrl + C` | コピー（注釈/ページ） | Windows |
+| `Cmd + C` | コピー（注釈/ページ） | Mac |
+| `Ctrl + V` | 貼り付け（注釈/ページ） | Windows |
+| `Cmd + V` | 貼り付け（注釈/ページ） | Mac |
 | `↑` | 前のページを選択 | 共通 |
 | `↓` | 次のページを選択 | 共通 |
 
