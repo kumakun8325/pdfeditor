@@ -21,6 +21,24 @@ export interface TextAnnotation {
 }
 
 /**
+ * ハイライト注釈
+ */
+export interface HighlightAnnotation {
+    /** 一意のID */
+    id: string;
+    /** 開始X座標 (ページ座標系, pt) */
+    x: number;
+    /** 開始Y座標 (ページ座標系, pt) */
+    y: number;
+    /** 幅 (pt) */
+    width: number;
+    /** 高さ (pt) */
+    height: number;
+    /** 色 (hex) */
+    color: string;
+}
+
+/**
  * ページデータ
  */
 export interface PageData {
@@ -50,6 +68,8 @@ export interface PageData {
     rotation?: number;
     /** テキスト注釈 */
     textAnnotations?: TextAnnotation[];
+    /** ハイライト注釈 */
+    highlightAnnotations?: HighlightAnnotation[];
 }
 
 /**

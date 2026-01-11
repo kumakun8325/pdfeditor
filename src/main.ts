@@ -3,7 +3,7 @@ import { PDFDocument, degrees, rgb, StandardFonts } from 'pdf-lib';
 import { PDFService } from './services/PDFService';
 import { ImageService } from './services/ImageService';
 import { KeyboardService } from './services/KeyboardService';
-import type { AppState, PageData, ToastType, TextAnnotation } from './types';
+import type { AppState, PageData, ToastType, TextAnnotation, HighlightAnnotation } from './types';
 import './styles/index.css';
 
 // Worker設定はPDFService側で行われる
@@ -29,6 +29,11 @@ class PDFEditorApp {
     private dragOffset = { x: 0, y: 0 };
     private readonly previewScale = 1.5;
     private backgroundImageData: ImageData | null = null;
+
+    // ハイライトモード
+    private isHighlightMode = false;
+    private highlightStart: { x: number; y: number } | null = null;
+    private highlightColor = '#ffff00'; // 黄色
 
     // DOM Elements
     private elements!: {
@@ -73,6 +78,8 @@ class PDFEditorApp {
         textInput: HTMLTextAreaElement;
         textSize: HTMLSelectElement;
         textColor: HTMLInputElement;
+        // ハイライト
+        btnHighlight: HTMLButtonElement;
     };
 
     constructor() {
@@ -145,6 +152,8 @@ class PDFEditorApp {
             textInput: document.getElementById('text-input') as HTMLTextAreaElement,
             textSize: document.getElementById('text-size') as HTMLSelectElement,
             textColor: document.getElementById('text-color') as HTMLInputElement,
+            // ハイライト
+            btnHighlight: document.getElementById('btn-highlight') as HTMLButtonElement,
         };
     }
 
@@ -264,11 +273,16 @@ class PDFEditorApp {
             this.selectPage(this.state.selectedPageIndex + 1);
         });
 
-        // テキスト注釈のドラッグ
+        // テキスト注釈のドラッグ / ハイライト描画
         this.elements.previewCanvas.addEventListener('mousedown', (e) => this.onCanvasMouseDown(e));
         this.elements.previewCanvas.addEventListener('mousemove', (e) => this.onCanvasMouseMove(e));
-        this.elements.previewCanvas.addEventListener('mouseup', () => this.onCanvasMouseUp());
-        this.elements.previewCanvas.addEventListener('mouseleave', () => this.onCanvasMouseUp());
+        this.elements.previewCanvas.addEventListener('mouseup', (e) => this.onCanvasMouseUp(e));
+        this.elements.previewCanvas.addEventListener('mouseleave', () => this.onCanvasMouseLeave());
+
+        // ハイライトモードトグル
+        this.elements.btnHighlight.addEventListener('click', () => {
+            this.toggleHighlightMode();
+        });
     }
 
     // クロスOS対応のショートカット登録ヘルパー
@@ -298,6 +312,9 @@ class PDFEditorApp {
         this.keyboardService.addShortcut('arrowdown', [], () => {
             this.selectPage(this.state.selectedPageIndex + 1);
         });
+
+        // Ctrl/Cmd + Z: ハイライト取り消し
+        this.addCrossOsShortcut('z', () => this.undoLastHighlight());
     }
 
     private setupDropZone(): void {
@@ -663,21 +680,37 @@ class PDFEditorApp {
 
     private drawTextAnnotations(): void {
         const page = this.state.pages[this.state.selectedPageIndex];
-        if (!page || !page.textAnnotations || page.textAnnotations.length === 0) return;
+        if (!page) return;
 
         const ctx = this.elements.previewCanvas.getContext('2d')!;
         const scale = this.previewScale;
 
-        for (const annotation of page.textAnnotations) {
-            ctx.save();
-            ctx.font = `${annotation.fontSize * scale}px sans-serif`;
-            ctx.fillStyle = annotation.color;
-            ctx.textBaseline = 'top';
-            // PDF座標系をCanvas座標系に変換（Y軸反転）
-            const canvasX = annotation.x * scale;
-            const canvasY = (page.height - annotation.y) * scale;
-            ctx.fillText(annotation.text, canvasX, canvasY);
-            ctx.restore();
+        // ハイライト注釈を描画（テキストより先に描画して背景として表示）
+        if (page.highlightAnnotations && page.highlightAnnotations.length > 0) {
+            for (const highlight of page.highlightAnnotations) {
+                ctx.save();
+                ctx.fillStyle = highlight.color;
+                ctx.globalAlpha = 0.3;
+                const canvasX = highlight.x * scale;
+                const canvasY = (page.height - highlight.y) * scale;
+                ctx.fillRect(canvasX, canvasY, highlight.width * scale, highlight.height * scale);
+                ctx.restore();
+            }
+        }
+
+        // テキスト注釈を描画
+        if (page.textAnnotations && page.textAnnotations.length > 0) {
+            for (const annotation of page.textAnnotations) {
+                ctx.save();
+                ctx.font = `${annotation.fontSize * scale}px sans-serif`;
+                ctx.fillStyle = annotation.color;
+                ctx.textBaseline = 'top';
+                // PDF座標系をCanvas座標系に変換（Y軸反転）
+                const canvasX = annotation.x * scale;
+                const canvasY = (page.height - annotation.y) * scale;
+                ctx.fillText(annotation.text, canvasX, canvasY);
+                ctx.restore();
+            }
         }
     }
 
@@ -712,6 +745,7 @@ class PDFEditorApp {
         this.elements.btnDelete.disabled = !hasPages || selectedIndex < 0;
         this.elements.btnClear.disabled = !hasPages;
         this.elements.btnAddText.disabled = !hasPages || selectedIndex < 0;
+        this.elements.btnHighlight.disabled = !hasPages || selectedIndex < 0;
         this.elements.btnExportPng.disabled = !hasPages || selectedIndex < 0;
         this.elements.btnExportAll.disabled = !hasPages;
 
@@ -783,7 +817,7 @@ class PDFEditorApp {
 
     private onCanvasMouseDown(e: MouseEvent): void {
         const page = this.state.pages[this.state.selectedPageIndex];
-        if (!page || !page.textAnnotations || page.textAnnotations.length === 0) return;
+        if (!page) return;
 
         const canvas = this.elements.previewCanvas;
         const rect = canvas.getBoundingClientRect();
@@ -798,6 +832,16 @@ class PDFEditorApp {
         // Canvas座標をPDF座標に変換
         const pdfX = canvasX / this.previewScale;
         const pdfY = page.height - (canvasY / this.previewScale);
+
+        // ハイライトモードの場合は開始位置を記録
+        if (this.isHighlightMode) {
+            this.highlightStart = { x: pdfX, y: pdfY };
+            e.preventDefault();
+            return;
+        }
+
+        // テキスト注釈のドラッグ
+        if (!page.textAnnotations || page.textAnnotations.length === 0) return;
 
         // クリック位置にある注釈を検索（最後に追加されたものが優先）
         for (let i = page.textAnnotations.length - 1; i >= 0; i--) {
@@ -819,20 +863,42 @@ class PDFEditorApp {
     }
 
     private onCanvasMouseMove(e: MouseEvent): void {
-        if (!this.draggingAnnotation) return;
-
         const page = this.state.pages[this.state.selectedPageIndex];
         if (!page) return;
 
         const canvas = this.elements.previewCanvas;
         const rect = canvas.getBoundingClientRect();
-
-        // 表示サイズと内部サイズの比率を計算
         const scaleX = canvas.width / rect.width;
         const scaleY = canvas.height / rect.height;
-
         const canvasX = (e.clientX - rect.left) * scaleX;
         const canvasY = (e.clientY - rect.top) * scaleY;
+
+        // ハイライトモードでドラッグ中はプレビュー矩形を描画
+        if (this.isHighlightMode && this.highlightStart) {
+            if (!this.backgroundImageData) return;
+
+            this.redrawWithCachedBackground();
+            const ctx = canvas.getContext('2d')!;
+
+            const startCanvasX = this.highlightStart.x * this.previewScale;
+            const startCanvasY = (page.height - this.highlightStart.y) * this.previewScale;
+
+            ctx.save();
+            ctx.fillStyle = this.highlightColor;
+            ctx.globalAlpha = 0.3;
+            ctx.fillRect(
+                Math.min(startCanvasX, canvasX),
+                Math.min(startCanvasY, canvasY),
+                Math.abs(canvasX - startCanvasX),
+                Math.abs(canvasY - startCanvasY)
+            );
+            ctx.restore();
+            e.preventDefault();
+            return;
+        }
+
+        // テキスト注釈ドラッグ
+        if (!this.draggingAnnotation) return;
 
         // Canvas座標をPDF座標に変換
         const pdfX = canvasX / this.previewScale;
@@ -847,11 +913,92 @@ class PDFEditorApp {
         e.preventDefault();
     }
 
-    private onCanvasMouseUp(): void {
+    private onCanvasMouseUp(e: MouseEvent): void {
+        // ハイライトモードで範囲選択完了
+        if (this.isHighlightMode && this.highlightStart) {
+            const page = this.state.pages[this.state.selectedPageIndex];
+            if (page) {
+                const canvas = this.elements.previewCanvas;
+                const rect = canvas.getBoundingClientRect();
+                const scaleX = canvas.width / rect.width;
+                const scaleY = canvas.height / rect.height;
+
+                const canvasX = (e.clientX - rect.left) * scaleX;
+                const canvasY = (e.clientY - rect.top) * scaleY;
+
+                const pdfX = canvasX / this.previewScale;
+                const pdfY = page.height - (canvasY / this.previewScale);
+
+                const startX = this.highlightStart.x;
+                const startY = this.highlightStart.y;
+
+                const highlight: HighlightAnnotation = {
+                    id: crypto.randomUUID(),
+                    x: Math.min(startX, pdfX),
+                    y: Math.max(startY, pdfY),
+                    width: Math.abs(pdfX - startX),
+                    height: Math.abs(pdfY - startY),
+                    color: this.highlightColor,
+                };
+
+                if (highlight.width > 5 && highlight.height > 5) {
+                    if (!page.highlightAnnotations) {
+                        page.highlightAnnotations = [];
+                    }
+                    page.highlightAnnotations.push(highlight);
+                    this.showToast('ハイライトを追加しました', 'success');
+                }
+            }
+            this.highlightStart = null;
+            // キャッシュ背景を使用
+            if (this.backgroundImageData) {
+                this.redrawWithCachedBackground();
+            } else {
+                this.updateMainView();
+            }
+            return;
+        }
+
+        // テキストドラッグ終了
         if (this.draggingAnnotation) {
             this.draggingAnnotation = null;
             this.elements.previewCanvas.style.cursor = 'default';
         }
+    }
+
+    private onCanvasMouseLeave(): void {
+        this.highlightStart = null;
+        if (this.draggingAnnotation) {
+            this.draggingAnnotation = null;
+            this.elements.previewCanvas.style.cursor = 'default';
+        }
+        if (this.isHighlightMode && this.backgroundImageData) {
+            this.redrawWithCachedBackground();
+        }
+    }
+
+    private toggleHighlightMode(): void {
+        this.isHighlightMode = !this.isHighlightMode;
+        this.elements.btnHighlight.classList.toggle('active', this.isHighlightMode);
+        this.elements.previewCanvas.style.cursor = this.isHighlightMode ? 'crosshair' : 'default';
+        this.showToast(this.isHighlightMode ? 'マーカーモード: ドラッグで範囲選択 (Ctrl+Z で取消)' : 'マーカーモード解除', 'success');
+    }
+
+    private undoLastHighlight(): void {
+        const page = this.state.pages[this.state.selectedPageIndex];
+        if (!page || !page.highlightAnnotations || page.highlightAnnotations.length === 0) {
+            this.showToast('取り消すハイライトがありません', 'warning');
+            return;
+        }
+
+        page.highlightAnnotations.pop();
+        // キャッシュ背景を使用
+        if (this.backgroundImageData) {
+            this.redrawWithCachedBackground();
+        } else {
+            this.updateMainView();
+        }
+        this.showToast('ハイライトを取り消しました', 'success');
     }
 
     private async savePDF(): Promise<void> {
