@@ -10,6 +10,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
 ).toString();
 
 import type { PageData, LoadResult } from '../types';
+import JSZip from 'jszip';
 
 /**
  * PDFService - PDF読み込み・編集サービス
@@ -108,7 +109,10 @@ export class PDFService {
         const page = await pdf.getPage(pageData.originalPageIndex + 1);
 
         // キャンバスサイズに合わせてスケールを計算
-        const viewport = page.getViewport({ scale: this.previewScale });
+        const viewport = page.getViewport({
+            scale: this.previewScale,
+            rotation: page.rotate
+        });
         canvas.width = viewport.width;
         canvas.height = viewport.height;
 
@@ -138,6 +142,10 @@ export class PDFService {
                 canvas.width = pageData.width * this.previewScale;
                 canvas.height = pageData.height * this.previewScale;
                 const ctx = canvas.getContext('2d')!;
+
+                // 変形行列リセット
+                ctx.setTransform(1, 0, 0, 1, 0, 0);
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
 
                 // 背景を白で塗りつぶし
                 ctx.fillStyle = 'white';
@@ -194,5 +202,93 @@ export class PDFService {
         const [removed] = newPages.splice(fromIndex, 1);
         newPages.splice(toIndex, 0, removed);
         return newPages;
+    }
+
+    /**
+     * 単一ページを画像(Blob)としてエクスポート
+     */
+    async exportPageAsImage(pageData: PageData): Promise<Blob> {
+        const canvas = document.createElement('canvas');
+        // 解像度を高めるためにスケールを大きくする
+        const exportScale = 2.0;
+
+        // PDFページの場合
+        if (pageData.type === 'pdf') {
+            if (!pageData.pdfBytes || pageData.originalPageIndex === undefined) {
+                throw new Error('Invalid page data');
+            }
+
+            const pdfBytesClone = pageData.pdfBytes.slice(0);
+            const pdf = await pdfjsLib.getDocument({ data: pdfBytesClone }).promise;
+            const page = await pdf.getPage(pageData.originalPageIndex + 1);
+
+            const viewport = page.getViewport({ scale: exportScale });
+            canvas.width = viewport.width;
+            canvas.height = viewport.height;
+
+            const context = canvas.getContext('2d')!;
+            // 変形行列リセット
+            context.setTransform(1, 0, 0, 1, 0, 0);
+            context.clearRect(0, 0, canvas.width, canvas.height);
+
+            await page.render({
+                canvasContext: context,
+                viewport,
+            }).promise;
+
+            return new Promise((resolve, reject) => {
+                canvas.toBlob((blob) => {
+                    if (blob) resolve(blob);
+                    else reject(new Error('Failed to create blob'));
+                }, 'image/png');
+            });
+        }
+
+        // 画像ページの場合
+        return new Promise((resolve, reject) => {
+            const img = new Image();
+            img.onload = () => {
+                canvas.width = pageData.width * exportScale;
+                canvas.height = pageData.height * exportScale;
+                const ctx = canvas.getContext('2d')!;
+
+                // 背景白
+                ctx.fillStyle = 'white';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                const scaleX = canvas.width / img.width;
+                const scaleY = canvas.height / img.height;
+                const scale = Math.min(scaleX, scaleY);
+
+                const scaledWidth = img.width * scale;
+                const scaledHeight = img.height * scale;
+                const x = (canvas.width - scaledWidth) / 2;
+                const y = (canvas.height - scaledHeight) / 2;
+
+                ctx.drawImage(img, x, y, scaledWidth, scaledHeight);
+
+                canvas.toBlob((blob) => {
+                    if (blob) resolve(blob);
+                    else reject(new Error('Failed to create blob'));
+                }, 'image/png');
+            };
+            img.onerror = reject;
+            img.src = pageData.fullImage || pageData.thumbnail;
+        });
+    }
+
+    /**
+     * 全ページをZIPとしてエクスポート
+     */
+    async exportAllPagesAsZip(pages: PageData[]): Promise<Blob> {
+        const zip = new JSZip();
+
+        for (let i = 0; i < pages.length; i++) {
+            const blob = await this.exportPageAsImage(pages[i]);
+            const fileName = `page_${String(i + 1).padStart(3, '0')}.png`;
+            zip.file(fileName, blob);
+        }
+
+        return await zip.generateAsync({ type: 'blob' });
     }
 }

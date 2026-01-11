@@ -1,3 +1,4 @@
+import { saveAs } from 'file-saver';
 import { PDFDocument } from 'pdf-lib';
 import * as pdfjsLib from 'pdfjs-dist';
 import { PDFService } from './services/PDFService';
@@ -31,14 +32,18 @@ class PDFEditorApp {
     // DOM Elements
     private elements!: {
         btnOpen: HTMLButtonElement;
+        btnOpenHero: HTMLButtonElement; // 追加
         btnSave: HTMLButtonElement;
         btnAddImage: HTMLButtonElement;
         btnMoveUp: HTMLButtonElement;
         btnMoveDown: HTMLButtonElement;
+        btnExportPng: HTMLButtonElement;
+        btnExportAll: HTMLButtonElement;
         btnTheme: HTMLButtonElement;
         fileInput: HTMLInputElement;
         imageInput: HTMLInputElement;
         pageList: HTMLDivElement;
+        mainView: HTMLElement; // 追加
         dropZone: HTMLDivElement;
         pageCount: HTMLSpanElement;
         emptyState: HTMLDivElement;
@@ -85,14 +90,18 @@ class PDFEditorApp {
 
         this.elements = {
             btnOpen: document.getElementById('btn-open') as HTMLButtonElement,
+            btnOpenHero: document.getElementById('btn-open-hero') as HTMLButtonElement, // 追加
             btnSave: document.getElementById('btn-save') as HTMLButtonElement,
             btnAddImage: document.getElementById('btn-add-image') as HTMLButtonElement,
             btnMoveUp: document.getElementById('btn-move-up') as HTMLButtonElement,
             btnMoveDown: document.getElementById('btn-move-down') as HTMLButtonElement,
+            btnExportPng: document.getElementById('btn-export-png') as HTMLButtonElement,
+            btnExportAll: document.getElementById('btn-export-all') as HTMLButtonElement,
             btnTheme: document.getElementById('btn-theme') as HTMLButtonElement,
             fileInput: document.getElementById('file-input') as HTMLInputElement,
             imageInput: imageInput,
             pageList: document.getElementById('page-list') as HTMLDivElement,
+            mainView: document.getElementById('main-view') as HTMLElement, // 追加
             dropZone: document.getElementById('drop-zone') as HTMLDivElement,
             pageCount: document.getElementById('page-count') as HTMLSpanElement,
             emptyState: document.getElementById('empty-state') as HTMLDivElement,
@@ -115,6 +124,13 @@ class PDFEditorApp {
         this.elements.btnOpen.addEventListener('click', () => {
             this.elements.fileInput.click();
         });
+
+        // ヒーローエリアの開くボタン
+        if (this.elements.btnOpenHero) {
+            this.elements.btnOpenHero.addEventListener('click', () => {
+                this.elements.fileInput.click();
+            });
+        }
 
         this.elements.fileInput.addEventListener('change', async (e) => {
             const file = (e.target as HTMLInputElement).files?.[0];
@@ -149,6 +165,16 @@ class PDFEditorApp {
 
         this.elements.btnMoveDown.addEventListener('click', () => {
             this.movePageDown();
+        });
+
+        // 画像保存
+        this.elements.btnExportPng.addEventListener('click', () => {
+            this.exportCurrentPage();
+        });
+
+        // 全保存
+        this.elements.btnExportAll.addEventListener('click', () => {
+            this.exportAllPages();
         });
 
         // テーマ切り替え
@@ -212,9 +238,12 @@ class PDFEditorApp {
     private setupDropZone(): void {
         const dropZone = this.elements.dropZone;
         const sidebar = document.getElementById('sidebar')!;
+        const mainView = this.elements.mainView;
 
-        // サイドバー全体もドロップ対象に
-        [dropZone, sidebar].forEach((el) => {
+        // サイドバーとメインビュー全体をドロップ対象に
+        [dropZone, sidebar, mainView].forEach((el) => {
+            if (!el) return;
+
             el.addEventListener('dragover', (e) => {
                 e.preventDefault();
                 dropZone.classList.add('drag-over');
@@ -222,6 +251,10 @@ class PDFEditorApp {
 
             el.addEventListener('dragleave', (e) => {
                 e.preventDefault();
+                // 関連要素内での移動でイベント発火しないように簡易チェック
+                if (e.relatedTarget && el.contains(e.relatedTarget as Node)) {
+                    return;
+                }
                 dropZone.classList.remove('drag-over');
             });
 
@@ -388,6 +421,7 @@ class PDFEditorApp {
         this.updateThumbnailSelection();
         this.updateMainView();
         this.updatePageNav();
+        this.updateUI();
     }
 
     private renderPageList(): void {
@@ -490,6 +524,7 @@ class PDFEditorApp {
 
         this.renderPageList();
         this.updateMainView();
+        this.updateUI();
     }
 
     private updateThumbnailSelection(): void {
@@ -534,6 +569,8 @@ class PDFEditorApp {
         this.elements.btnSave.disabled = !hasPages;
         this.elements.btnMoveUp.disabled = !hasPages || selectedIndex <= 0;
         this.elements.btnMoveDown.disabled = !hasPages || selectedIndex >= this.state.pages.length - 1;
+        this.elements.btnExportPng.disabled = !hasPages || selectedIndex < 0;
+        this.elements.btnExportAll.disabled = !hasPages;
 
         this.elements.pageCount.textContent = hasPages
             ? `${this.state.pages.length}ページ`
@@ -567,6 +604,41 @@ class PDFEditorApp {
         } catch (error) {
             console.error('Save PDF error:', error);
             this.showToast('PDFの保存に失敗しました', 'error');
+        }
+
+        this.hideLoading();
+    }
+
+    private async exportCurrentPage(): Promise<void> {
+        if (this.state.selectedPageIndex < 0 || this.state.pages.length === 0) return;
+
+        this.showLoading('画像を生成中...');
+
+        try {
+            const page = this.state.pages[this.state.selectedPageIndex];
+            const blob = await this.pdfService.exportPageAsImage(page);
+            saveAs(blob, `page_${this.state.selectedPageIndex + 1}.png`);
+            this.showToast('画像を保存しました', 'success');
+        } catch (error) {
+            console.error('Export error:', error);
+            this.showToast('画像の保存に失敗しました', 'error');
+        }
+
+        this.hideLoading();
+    }
+
+    private async exportAllPages(): Promise<void> {
+        if (this.state.pages.length === 0) return;
+
+        this.showLoading('ZIPを生成中...');
+
+        try {
+            const blob = await this.pdfService.exportAllPagesAsZip(this.state.pages);
+            saveAs(blob, 'pages.zip');
+            this.showToast('ZIPを保存しました', 'success');
+        } catch (error) {
+            console.error('Export error:', error);
+            this.showToast('ZIPの保存に失敗しました', 'error');
         }
 
         this.hideLoading();
