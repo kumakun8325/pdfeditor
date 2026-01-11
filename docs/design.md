@@ -87,10 +87,46 @@ interface PageData {
     fullImage?: string;          // フルサイズ画像 (data URL, 画像ページ用)
     width: number;               // ページ幅 (pt)
     height: number;              // ページ高さ (pt)
+    rotation?: number;           // 回転角度 (0, 90, 180, 270)
+    textAnnotations?: TextAnnotation[];        // テキスト注釈
+    highlightAnnotations?: HighlightAnnotation[]; // ハイライト注釈
     originalWidth?: number;      // 元画像幅 (px)
     originalHeight?: number;     // 元画像高さ (px)
     originalPageIndex?: number;  // PDF由来のページインデックス
 }
+```
+
+### 3.3 注釈・操作ログ
+
+```typescript
+interface TextAnnotation {
+    id: string;
+    text: string;
+    x: number;
+    y: number;
+    fontSize: number;
+    color: string;
+}
+
+interface HighlightAnnotation {
+    id: string;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    color: string;
+}
+
+// Undo操作の型定義
+type UndoAction =
+    | { type: 'deletePage'; page: PageData; index: number }
+    | { type: 'movePage'; fromIndex: number; toIndex: number }
+    | { type: 'rotatePage'; pageId: string; previousRotation: number }
+    | { type: 'clear'; pages: PageData[]; selectedIndex: number }
+    | { type: 'addText'; pageId: string; annotationId: string }
+    | { type: 'addHighlight'; pageId: string; annotationId: string }
+    | { type: 'addImage'; pageId: string; index: number };
+
 ```
 
 ---
