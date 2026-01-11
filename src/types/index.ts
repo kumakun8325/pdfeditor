@@ -111,3 +111,15 @@ export interface LoadResult {
     pages?: PageData[];
     error?: string;
 }
+
+/**
+ * Undo操作の型
+ */
+export type UndoAction =
+    | { type: 'deletePage'; page: PageData; index: number }
+    | { type: 'movePage'; fromIndex: number; toIndex: number }
+    | { type: 'rotatePage'; pageId: string; previousRotation: number }
+    | { type: 'clear'; pages: PageData[]; selectedIndex: number }
+    | { type: 'addText'; pageId: string; annotationId: string }
+    | { type: 'addHighlight'; pageId: string; annotationId: string }
+    | { type: 'addImage'; pageId: string; index: number };

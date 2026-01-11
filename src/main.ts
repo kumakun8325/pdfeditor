@@ -3,7 +3,7 @@ import { PDFDocument, degrees, rgb, StandardFonts } from 'pdf-lib';
 import { PDFService } from './services/PDFService';
 import { ImageService } from './services/ImageService';
 import { KeyboardService } from './services/KeyboardService';
-import type { AppState, PageData, ToastType, TextAnnotation, HighlightAnnotation } from './types';
+import type { AppState, PageData, ToastType, TextAnnotation, HighlightAnnotation, UndoAction } from './types';
 import './styles/index.css';
 
 // Worker設定はPDFService側で行われる
@@ -34,6 +34,10 @@ class PDFEditorApp {
     private isHighlightMode = false;
     private highlightStart: { x: number; y: number } | null = null;
     private highlightColor = '#ffff00'; // 黄色
+
+    // Undoスタック
+    private undoStack: UndoAction[] = [];
+    private readonly maxUndoStack = 20;
 
     // DOM Elements
     private elements!: {
@@ -313,8 +317,8 @@ class PDFEditorApp {
             this.selectPage(this.state.selectedPageIndex + 1);
         });
 
-        // Ctrl/Cmd + Z: ハイライト取り消し
-        this.addCrossOsShortcut('z', () => this.undoLastHighlight());
+        // Ctrl/Cmd + Z: 元に戻す
+        this.addCrossOsShortcut('z', () => this.undo());
     }
 
     private setupDropZone(): void {
@@ -422,6 +426,9 @@ class PDFEditorApp {
             );
             this.state.selectedPageIndex = insertIndex;
 
+            // Undoのために追加した画像を保存
+            this.pushUndo({ type: 'addImage', pageId: pageData.id, index: insertIndex });
+
             this.renderPageList();
             this.updateMainView();
             this.updateUI();
@@ -443,6 +450,11 @@ class PDFEditorApp {
         );
 
         if (!confirmed) return;
+
+        // Undoのために削除前の状態を保存
+        const deletedPage = this.state.pages[this.state.selectedPageIndex];
+        const deletedIndex = this.state.selectedPageIndex;
+        this.pushUndo({ type: 'deletePage', page: deletedPage, index: deletedIndex });
 
         this.state.pages = this.pdfService.removePageAt(
             this.state.pages,
@@ -470,6 +482,9 @@ class PDFEditorApp {
         if (index < 0 || this.state.pages.length < 2) return;
         if (direction === 'up' && index <= 0) return;
         if (direction === 'down' && index >= this.state.pages.length - 1) return;
+
+        // Undoのために移動前の状態を保存
+        this.pushUndo({ type: 'movePage', fromIndex: index, toIndex: newIndex });
 
         this.state.pages = this.pdfService.reorderPages(this.state.pages, index, newIndex);
         this.state.selectedPageIndex = newIndex;
@@ -503,6 +518,10 @@ class PDFEditorApp {
 
         const page = this.state.pages[this.state.selectedPageIndex];
         const currentRotation = page.rotation || 0;
+
+        // Undoのために回転前の状態を保存
+        this.pushUndo({ type: 'rotatePage', pageId: page.id, previousRotation: currentRotation });
+
         page.rotation = (currentRotation + 90) % 360;
 
         this.renderPageList();
@@ -757,6 +776,13 @@ class PDFEditorApp {
     private clearPages(): void {
         if (this.state.pages.length === 0) return;
 
+        // Undoのためにクリア前の状態を保存
+        this.pushUndo({
+            type: 'clear',
+            pages: [...this.state.pages],
+            selectedIndex: this.state.selectedPageIndex
+        });
+
         this.state.pages = [];
         this.state.selectedPageIndex = -1;
         this.state.originalPdfBytes = null;
@@ -804,6 +830,9 @@ class PDFEditorApp {
             page.textAnnotations = [];
         }
         page.textAnnotations.push(annotation);
+
+        // Undoのために追加したテキストを保存
+        this.pushUndo({ type: 'addText', pageId: page.id, annotationId: annotation.id });
 
         this.closeTextModal();
         // キャッシュ背景がある場合はそれを使用、なければフル再描画
@@ -946,6 +975,8 @@ class PDFEditorApp {
                         page.highlightAnnotations = [];
                     }
                     page.highlightAnnotations.push(highlight);
+                    // Undoのためにハイライトを保存
+                    this.pushUndo({ type: 'addHighlight', pageId: page.id, annotationId: highlight.id });
                     this.showToast('ハイライトを追加しました', 'success');
                 }
             }
@@ -981,24 +1012,111 @@ class PDFEditorApp {
         this.isHighlightMode = !this.isHighlightMode;
         this.elements.btnHighlight.classList.toggle('active', this.isHighlightMode);
         this.elements.previewCanvas.style.cursor = this.isHighlightMode ? 'crosshair' : 'default';
-        this.showToast(this.isHighlightMode ? 'マーカーモード: ドラッグで範囲選択 (Ctrl+Z で取消)' : 'マーカーモード解除', 'success');
+        this.showToast(this.isHighlightMode ? 'マーカーモード: ドラッグで範囲選択' : 'マーカーモード解除', 'success');
     }
 
-    private undoLastHighlight(): void {
-        const page = this.state.pages[this.state.selectedPageIndex];
-        if (!page || !page.highlightAnnotations || page.highlightAnnotations.length === 0) {
-            this.showToast('取り消すハイライトがありません', 'warning');
+    private pushUndo(action: UndoAction): void {
+        this.undoStack.push(action);
+        if (this.undoStack.length > this.maxUndoStack) {
+            this.undoStack.shift();
+        }
+    }
+
+    private undo(): void {
+        const action = this.undoStack.pop();
+        if (!action) {
+            this.showToast('取り消す操作がありません', 'warning');
             return;
         }
 
-        page.highlightAnnotations.pop();
-        // キャッシュ背景を使用
+        switch (action.type) {
+            case 'deletePage':
+                // ページを元の位置に挿入
+                this.state.pages.splice(action.index, 0, action.page);
+                this.state.selectedPageIndex = action.index;
+                this.renderPageList();
+                this.updateMainView();
+                break;
+
+            case 'movePage':
+                // 移動を逆に実行
+                this.state.pages = this.pdfService.reorderPages(
+                    this.state.pages,
+                    action.toIndex,
+                    action.fromIndex
+                );
+                this.state.selectedPageIndex = action.fromIndex;
+                this.renderPageList();
+                this.updateMainView();
+                break;
+
+            case 'rotatePage': {
+                const rotPage = this.state.pages.find(p => p.id === action.pageId);
+                if (rotPage) {
+                    rotPage.rotation = action.previousRotation;
+                    this.renderPageList();
+                    this.updateMainView();
+                }
+                break;
+            }
+
+            case 'clear':
+                // 全ページを復元
+                this.state.pages = action.pages;
+                this.state.selectedPageIndex = action.selectedIndex;
+                this.renderPageList();
+                this.updateMainView();
+                break;
+
+            case 'addText': {
+                const txtPage = this.state.pages.find(p => p.id === action.pageId);
+                if (txtPage?.textAnnotations) {
+                    const idx = txtPage.textAnnotations.findIndex(a => a.id === action.annotationId);
+                    if (idx >= 0) txtPage.textAnnotations.splice(idx, 1);
+                }
+                break;
+            }
+
+            case 'addHighlight': {
+                const hlPage = this.state.pages.find(p => p.id === action.pageId);
+                if (hlPage?.highlightAnnotations) {
+                    const idx = hlPage.highlightAnnotations.findIndex(a => a.id === action.annotationId);
+                    if (idx >= 0) hlPage.highlightAnnotations.splice(idx, 1);
+                }
+                break;
+            }
+
+            case 'addImage': {
+                // 追加されたページを削除
+                if (action.index >= 0 && action.index < this.state.pages.length) {
+                    const page = this.state.pages[action.index];
+                    // IDが一致するか確認して削除
+                    if (page.id === action.pageId) {
+                        this.state.pages.splice(action.index, 1);
+
+                        // 選択インデックスを調整
+                        if (this.state.selectedPageIndex >= this.state.pages.length) {
+                            this.state.selectedPageIndex = this.state.pages.length - 1;
+                        } else if (this.state.selectedPageIndex === action.index) {
+                            // 削除したページを選択していた場合は一つ前を選択（なければ-1）
+                            this.state.selectedPageIndex = Math.max(-1, action.index - 1);
+                        }
+
+                        this.renderPageList();
+                        this.updateMainView();
+                    }
+                }
+                break;
+            }
+        }
+
+        // 再描画
         if (this.backgroundImageData) {
             this.redrawWithCachedBackground();
         } else {
             this.updateMainView();
         }
-        this.showToast('ハイライトを取り消しました', 'success');
+        this.updateUI();
     }
 
     private async savePDF(): Promise<void> {
@@ -1183,6 +1301,9 @@ class PDFEditorApp {
     }
 
     private showToast(message: string, type: ToastType): void {
+        // 成功メッセージは非表示（警告・エラーのみ表示）
+        if (type === 'success') return;
+
         const toast = document.createElement('div');
         toast.className = `toast ${type}`;
         toast.textContent = message;
