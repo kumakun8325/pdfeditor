@@ -124,4 +124,8 @@ export type UndoAction =
     | { type: 'addHighlight'; pageId: string; annotationId: string; annotation?: HighlightAnnotation }
     | { type: 'addImage'; pageId: string; index: number; page?: PageData }
     | { type: 'duplicatePage'; pageId: string; index: number; page?: PageData }
-    | { type: 'moveText'; pageId: string; annotationId: string; fromX: number; fromY: number; toX: number; toY: number };
+    | { type: 'moveText'; pageId: string; annotationId: string; fromX: number; fromY: number; toX: number; toY: number }
+    | { type: 'moveHighlight'; pageId: string; annotationId: string; fromX: number; fromY: number; toX: number; toY: number }
+    | { type: 'deleteText'; pageId: string; annotationId: string; annotation: TextAnnotation }
+    | { type: 'deleteHighlight'; pageId: string; annotationId: string; annotation: HighlightAnnotation }
+    | { type: 'updateText'; pageId: string; annotationId: string; oldText: string; newText: string; oldColor: string; newColor: string; oldFontSize: number; newFontSize: number };

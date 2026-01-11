@@ -140,7 +140,7 @@
 - [x] 13.2 Redoロジック実装 (UndoManager, PDFEditorApp)
 - [x] 13.3 ショートカット実装 (Ctrl+Y, Ctrl+Shift+Z)
 - [x] 13.4 Undo/Redo UIボタン実装 / Ctrl+Y ショートカット対応
-- [ ] 13.3 UI操作の統合
+- [x] 13.5 UI操作の統合
 
 ## Phase 14: 注釈の高度な編集
 
