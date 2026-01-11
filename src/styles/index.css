@@ -132,6 +132,24 @@ body {
     background: var(--bg-hover);
 }
 
+/* Button Group */
+.btn-group {
+    display: inline-flex;
+    gap: 2px;
+}
+
+.btn-group .btn {
+    border-radius: 0;
+}
+
+.btn-group .btn:first-child {
+    border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+}
+
+.btn-group .btn:last-child {
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+
 /* Toolbar */
 .toolbar {
     height: var(--toolbar-height);

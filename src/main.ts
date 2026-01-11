@@ -32,8 +32,12 @@ class PDFEditorApp {
     private elements!: {
         btnOpen: HTMLButtonElement;
         btnSave: HTMLButtonElement;
+        btnAddImage: HTMLButtonElement;
+        btnMoveUp: HTMLButtonElement;
+        btnMoveDown: HTMLButtonElement;
         btnTheme: HTMLButtonElement;
         fileInput: HTMLInputElement;
+        imageInput: HTMLInputElement;
         pageList: HTMLDivElement;
         dropZone: HTMLDivElement;
         pageCount: HTMLSpanElement;
@@ -68,11 +72,26 @@ class PDFEditorApp {
     }
 
     private cacheElements(): void {
+        // 画像用の hidden input を動的に追加
+        let imageInput = document.getElementById('image-input') as HTMLInputElement;
+        if (!imageInput) {
+            imageInput = document.createElement('input');
+            imageInput.type = 'file';
+            imageInput.id = 'image-input';
+            imageInput.accept = '.png,.jpg,.jpeg';
+            imageInput.style.display = 'none';
+            document.body.appendChild(imageInput);
+        }
+
         this.elements = {
             btnOpen: document.getElementById('btn-open') as HTMLButtonElement,
             btnSave: document.getElementById('btn-save') as HTMLButtonElement,
+            btnAddImage: document.getElementById('btn-add-image') as HTMLButtonElement,
+            btnMoveUp: document.getElementById('btn-move-up') as HTMLButtonElement,
+            btnMoveDown: document.getElementById('btn-move-down') as HTMLButtonElement,
             btnTheme: document.getElementById('btn-theme') as HTMLButtonElement,
             fileInput: document.getElementById('file-input') as HTMLInputElement,
+            imageInput: imageInput,
             pageList: document.getElementById('page-list') as HTMLDivElement,
             dropZone: document.getElementById('drop-zone') as HTMLDivElement,
             pageCount: document.getElementById('page-count') as HTMLSpanElement,
@@ -107,6 +126,29 @@ class PDFEditorApp {
         // 保存
         this.elements.btnSave.addEventListener('click', () => {
             this.savePDF();
+        });
+
+        // 画像追加
+        this.elements.btnAddImage.addEventListener('click', () => {
+            this.elements.imageInput.click();
+        });
+
+        this.elements.imageInput.addEventListener('change', async (e) => {
+            const file = (e.target as HTMLInputElement).files?.[0];
+            if (file) {
+                await this.insertImage(file);
+            }
+            // リセット（同じファイルを再選択可能に）
+            (e.target as HTMLInputElement).value = '';
+        });
+
+        // ページ移動
+        this.elements.btnMoveUp.addEventListener('click', () => {
+            this.movePageUp();
+        });
+
+        this.elements.btnMoveDown.addEventListener('click', () => {
+            this.movePageDown();
         });
 
         // テーマ切り替え
@@ -305,6 +347,40 @@ class PDFEditorApp {
         this.showToast('ページを削除しました', 'success');
     }
 
+    private movePageUp(): void {
+        const index = this.state.selectedPageIndex;
+        if (index <= 0 || this.state.pages.length < 2) return;
+
+        this.state.pages = this.pdfService.reorderPages(
+            this.state.pages,
+            index,
+            index - 1
+        );
+        this.state.selectedPageIndex = index - 1;
+
+        this.renderPageList();
+        this.updateMainView();
+        this.updateUI();
+        this.showToast('ページを上に移動しました', 'success');
+    }
+
+    private movePageDown(): void {
+        const index = this.state.selectedPageIndex;
+        if (index < 0 || index >= this.state.pages.length - 1) return;
+
+        this.state.pages = this.pdfService.reorderPages(
+            this.state.pages,
+            index,
+            index + 1
+        );
+        this.state.selectedPageIndex = index + 1;
+
+        this.renderPageList();
+        this.updateMainView();
+        this.updateUI();
+        this.showToast('ページを下に移動しました', 'success');
+    }
+
     private selectPage(index: number): void {
         if (index < 0 || index >= this.state.pages.length) return;
 
@@ -453,7 +529,12 @@ class PDFEditorApp {
 
     private updateUI(): void {
         const hasPages = this.state.pages.length > 0;
+        const selectedIndex = this.state.selectedPageIndex;
+
         this.elements.btnSave.disabled = !hasPages;
+        this.elements.btnMoveUp.disabled = !hasPages || selectedIndex <= 0;
+        this.elements.btnMoveDown.disabled = !hasPages || selectedIndex >= this.state.pages.length - 1;
+
         this.elements.pageCount.textContent = hasPages
             ? `${this.state.pages.length}ページ`
             : '';
