@@ -29,6 +29,7 @@ class PDFEditorApp {
     // ドラッグ状態
     private draggingAnnotation: TextAnnotation | null = null;
     private dragOffset = { x: 0, y: 0 };
+    private draggingStart: { x: number; y: number } | null = null;
     private readonly previewScale = 1.5;
     private backgroundImageData: ImageData | null = null;
 
@@ -553,6 +554,13 @@ class PDFEditorApp {
         );
         this.state.selectedPageIndex = this.state.selectedPageIndex + 1;
 
+        // Undoのために複製したページを保存
+        this.pushUndo({
+            type: 'duplicatePage',
+            pageId: duplicatedPage.id,
+            index: this.state.selectedPageIndex
+        });
+
         this.renderPageList();
         this.updateMainView();
         this.updatePageNav();
@@ -774,6 +782,7 @@ class PDFEditorApp {
     }
 
     private openTextModal(): void {
+        this.disableHighlightMode(); // マーカーモード解除
         this.elements.textInput.value = '';
         this.elements.textSize.value = '16';
         this.elements.textColor.value = '#000000';
@@ -786,6 +795,7 @@ class PDFEditorApp {
     }
 
     private addTextAnnotation(): void {
+        this.disableHighlightMode(); // マーカーモード解除
         const text = this.elements.textInput.value.trim();
         if (!text) {
             this.showToast('テキストを入力してください', 'warning');
@@ -851,7 +861,9 @@ class PDFEditorApp {
         // テキスト注釈のドラッグ
         const hitAnnotation = AnnotationManager.hitTestText(page, pdfX, pdfY);
         if (hitAnnotation) {
+            this.disableHighlightMode(); // マーカーモード解除
             this.draggingAnnotation = hitAnnotation;
+            this.draggingStart = { x: hitAnnotation.x, y: hitAnnotation.y }; // 開始位置保存
             this.dragOffset.x = pdfX - hitAnnotation.x;
             this.dragOffset.y = pdfY - hitAnnotation.y;
             this.elements.previewCanvas.style.cursor = 'grabbing';
@@ -913,9 +925,10 @@ class PDFEditorApp {
     }
 
     private onCanvasMouseUp(e: MouseEvent): void {
+        const page = this.state.pages[this.state.selectedPageIndex];
+
         // ハイライトモードで範囲選択完了
         if (this.isHighlightMode && this.highlightStart) {
-            const page = this.state.pages[this.state.selectedPageIndex];
             if (page) {
                 const canvas = this.elements.previewCanvas;
                 const rect = canvas.getBoundingClientRect();
@@ -963,7 +976,21 @@ class PDFEditorApp {
 
         // テキストドラッグ終了
         if (this.draggingAnnotation) {
+            // 移動があった場合のみUndo記録
+            if (this.draggingStart && (Math.abs(this.draggingStart.x - this.draggingAnnotation.x) > 1 || Math.abs(this.draggingStart.y - this.draggingAnnotation.y) > 1)) {
+                this.pushUndo({
+                    type: 'moveText',
+                    pageId: page.id,
+                    annotationId: this.draggingAnnotation.id,
+                    fromX: this.draggingStart.x,
+                    fromY: this.draggingStart.y,
+                    toX: this.draggingAnnotation.x,
+                    toY: this.draggingAnnotation.y
+                });
+            }
+
             this.draggingAnnotation = null;
+            this.draggingStart = null;
             this.elements.previewCanvas.style.cursor = 'default';
         }
     }
@@ -984,6 +1011,14 @@ class PDFEditorApp {
         this.elements.btnHighlight.classList.toggle('active', this.isHighlightMode);
         this.elements.previewCanvas.style.cursor = this.isHighlightMode ? 'crosshair' : 'default';
         this.showToast(this.isHighlightMode ? 'マーカーモード: ドラッグで範囲選択' : 'マーカーモード解除', 'success');
+    }
+
+    private disableHighlightMode(): void {
+        if (this.isHighlightMode) {
+            this.isHighlightMode = false;
+            this.elements.btnHighlight.classList.remove('active');
+            this.elements.previewCanvas.style.cursor = 'default';
+        }
     }
 
     private pushUndo(action: UndoAction): void {
@@ -1054,7 +1089,8 @@ class PDFEditorApp {
                 break;
             }
 
-            case 'addImage': {
+            case 'addImage':
+            case 'duplicatePage': {
                 // 追加されたページを削除
                 if (action.index >= 0 && action.index < this.state.pages.length) {
                     const page = this.state.pages[action.index];
@@ -1072,6 +1108,24 @@ class PDFEditorApp {
 
                         this.renderPageList();
                         this.updateMainView();
+                    }
+                }
+                break;
+            }
+
+            case 'moveText': {
+                const page = this.state.pages.find(p => p.id === action.pageId);
+                if (page && page.textAnnotations) {
+                    const ann = page.textAnnotations.find(a => a.id === action.annotationId);
+                    if (ann) {
+                        ann.x = action.fromX;
+                        ann.y = action.fromY;
+                        // キャッシュ背景を使用
+                        if (this.backgroundImageData) {
+                            this.redrawWithCachedBackground();
+                        } else {
+                            this.updateMainView();
+                        }
                     }
                 }
                 break;
