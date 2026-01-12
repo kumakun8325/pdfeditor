@@ -4,33 +4,28 @@
 
 ---
 
-## 2026-01-12 (日)
+## 2026-01-12 (月)
 
 ### 実施内容
-- **Phase 25: テキスト注釈リサイズの実装**
-    - テキスト注釈にリサイズハンドル（右下）を追加
-    - ドラッグによるフォントサイズ変更機能の実装
-    - `AnnotationManager.ts` のヒット判定ロジック拡張
-    - `main.ts` へのリサイズイベントハンドリング（MouseDown, MouseMove, MouseUp）実装
-- **Undo/Redo機能の強化**
-    - リサイズ操作のUndo/Redo対応 (`updateText`アクションの拡張)
-    - 構文エラーおよびUndo時の挙動不具合（テキストリセット問題）の修正
-- **プロジェクトドキュメントの更新**
-    - `requirements.md` にリサイズ機能の要件追記
-    - `design.md` に `UndoAction` 型定義の更新内容を反映
-    - `tasks.md` にPhase 24, 25の完了を記録
+- **パフォーマンス最適化 (Phase 27)** (旧 Phase 29)
+    - `RenderManager` への `ImageBitmap` キャッシングの実装
+    - ページ再訪時のレンダリングスキップ（高速化）
+    - 注釈（ハイライト）ドラッグ時の描画ロジック改善（`putImageData` -> `drawImage`）
+- **ドキュメント整備**
+    - `tasks.md` の欠落フェーズ (15-23) の復元
+    - タスク順序の整理とリナンバリング (29,30,31 -> 27,28,29)
+    - パフォーマンス最適化タスクの日本語化
+    - `walkthrough.md` の更新（パフォーマンス最適化内容の追記）
 
 ### 変更ファイル
-- `src/main.ts`
-- `src/managers/AnnotationManager.ts`
-- `docs/requirements.md`
-- `docs/design.md`
-- `docs/tasks.md`
+- `src/managers/RenderManager.ts` (キャッシュ実装)
+- `docs/tasks.md` (タスク整理)
+- `docs/walkthrough.md` (実施録)
 
 ### 次回TODO
-- Phase 15.1: 複数画像の選択・一括追加
-- Phase 15.2: UIリファクタリング（ツールバーの整理など）
+- [ ] Phase 28: ヘルプ機能の実装 (ショートカット一覧、ヘルプボタン)
+- [ ] Phase 29: PWA対応 (Service Worker, Manifest)
 
 ### ブランチ状態
-- ブランチ名: `feature/phase25-text-resize` (想定)
-- 状態: 作業完了 / マージ待ち
+- ブランチ名: `main`
+- 状態: 完了 (パフォーマンス最適化コミット済み)
