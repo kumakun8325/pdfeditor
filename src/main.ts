@@ -13,6 +13,7 @@ import { ContextMenuManager } from './managers/ContextMenuManager';
 import { EventManager } from './managers/EventManager';
 import { ToolbarManager } from './managers/ToolbarManager';
 import { RenderManager } from './managers/RenderManager';
+import { HelpManager } from './managers/HelpManager';
 import type { AppState, PageData, ToastType, TextAnnotation, HighlightAnnotation, UndoAction, UIElements, AppAction } from './types';
 import './styles/index.css';
 
@@ -37,6 +38,7 @@ export class PDFEditorApp implements AppAction {
     private eventManager!: EventManager;
     private toolbarManager!: ToolbarManager;
     private renderManager!: RenderManager;
+    private helpManager!: HelpManager;
 
     // ドラッグ状態
     private draggingAnnotation: TextAnnotation | HighlightAnnotation | null = null;
@@ -281,6 +283,17 @@ export class PDFEditorApp implements AppAction {
         this.updateUI();
     }
 
+    public selectAllPages(): void {
+        if (this.state.pages.length === 0) return;
+        this.selectionManager.selectAll();
+
+        this.updateThumbnailSelection();
+        this.updateMainView();
+        this.updatePageNav();
+        this.updateUI();
+        this.showToast('全てのページを選択しました', 'info');
+    }
+
     // ハイライトモード
     private isHighlightMode = false;
     private highlightStart: { x: number; y: number } | null = null;
@@ -328,6 +341,14 @@ export class PDFEditorApp implements AppAction {
         // ToolbarManager初期化
         this.toolbarManager = new ToolbarManager(this.elements);
         this.toolbarManager.setupDropdownMenus();
+
+        // HelpManager初期化
+        this.helpManager = new HelpManager(
+            this.elements.btnHelp,
+            this.elements.helpModal,
+            this.elements.helpModalClose
+        );
+        this.helpManager.init();
 
         // RenderManager初期化
         this.renderManager = new RenderManager(this.elements, () => this.state);
@@ -472,6 +493,10 @@ export class PDFEditorApp implements AppAction {
             btnUndo: document.getElementById('btn-undo') as HTMLButtonElement,
             btnRedo: document.getElementById('btn-redo') as HTMLButtonElement,
             zoomLevel: document.getElementById('zoom-level') as HTMLSpanElement,
+            // Help
+            btnHelp: document.getElementById('btn-help') as HTMLButtonElement,
+            helpModal: document.getElementById('help-modal') as HTMLDivElement,
+            helpModalClose: document.getElementById('help-modal-close') as HTMLButtonElement,
         };
     }
 
@@ -856,7 +881,14 @@ export class PDFEditorApp implements AppAction {
         const { x: canvasX, y: canvasY } = this.getCanvasPoint(e);
 
         // Canvas座標をPDF座標に変換
-        const point = AnnotationManager.toPdfPoint(canvasX, canvasY, this.previewScale, page.height);
+        const point = AnnotationManager.toPdfPoint(
+            canvasX,
+            canvasY,
+            this.previewScale,
+            page.height,
+            page.width,
+            page.rotation
+        );
         const pdfX = point.x;
         const pdfY = point.y;
 
@@ -878,6 +910,39 @@ export class PDFEditorApp implements AppAction {
         // 0. リサイズハンドルの判定 (選択中のみ)
         if (this.selectedAnnotationId) {
             const ctx = this.elements.previewCanvas.getContext('2d')!;
+
+            // 0.1 回転ハンドルの判定
+            const hitRotHandle = AnnotationManager.hitTestTextRotationHandle(
+                ctx,
+                page,
+                pdfX,
+                pdfY,
+                this.previewScale,
+                this.selectedAnnotationId
+            );
+
+            if (hitRotHandle) {
+                this.rotatingAnnotationId = hitRotHandle.id;
+
+                // Calculate initial angle relative to text center
+                const metrics = AnnotationManager.getTextMetrics(ctx, hitRotHandle.text, hitRotHandle.fontSize, this.previewScale);
+                const textWidthPdf = metrics.width / this.previewScale;
+                const textHeightPdf = metrics.height / this.previewScale;
+                const centerX = hitRotHandle.x + textWidthPdf / 2;
+                const centerY = hitRotHandle.y - textHeightPdf / 2; // Y is Top
+
+                const dy = pdfY - centerY;
+                const dx = pdfX - centerX;
+
+                this.rotationStartAngle = Math.atan2(dy, dx);
+                this.initialRotation = hitRotHandle.rotation || 0;
+
+                this.elements.previewCanvas.style.cursor = 'grabbing';
+                e.preventDefault();
+                return;
+            }
+
+            // 0.2 リサイズハンドル
             const hitHandle = AnnotationManager.hitTestTextHandle(
                 ctx,
                 page,
@@ -970,6 +1035,12 @@ export class PDFEditorApp implements AppAction {
     }
 
     private isDraggingRenderPending = false;
+    private lastMouseEvent: MouseEvent | null = null;
+
+    // Rotation State
+    private rotatingAnnotationId: string | null = null;
+    private rotationStartAngle: number = 0;
+    private initialRotation: number = 0;
 
     public onCanvasMouseMove(e: MouseEvent): void {
         const page = this.state.pages[this.state.selectedPageIndex];
@@ -978,31 +1049,31 @@ export class PDFEditorApp implements AppAction {
         // ドラッグ中またはハイライトモード中のドラッグ判断（同期処理）
         const isHighlightDragging = this.isHighlightMode && !!this.highlightStart;
         const isAnnotationDragging = !!this.draggingAnnotation;
+        const isRotating = !!this.rotatingAnnotationId;
+
         // リサイズ中
         if (this.isResizing && this.resizeStart) {
             e.preventDefault();
-            // リサイズ処理は直接handleCanvasMouseMoveで行うか、ここで行うか。
-            // requestAnimationFrameを使う既存ロジックに乗せる。
-        } else if (isHighlightDragging || isAnnotationDragging) {
+        } else if (isHighlightDragging || isAnnotationDragging || isRotating) {
             e.preventDefault();
         } else {
-            // ドラッグ中でなければカーソル更新チェック (Hover)
-            // ここでヒットテストを行うと重いかもしれないが、UX向上のため検討
-            // いったんスキップ
             return;
         }
+
+        this.lastMouseEvent = e;
 
         if (this.isDraggingRenderPending) return;
 
         this.isDraggingRenderPending = true;
         requestAnimationFrame(() => {
             // ページが切り替わっている等の場合は中止
-            if (!this.state.pages[this.state.selectedPageIndex]) {
+            if (!this.state.pages[this.state.selectedPageIndex] || !this.lastMouseEvent) {
                 this.isDraggingRenderPending = false;
                 return;
             }
-            this.handleCanvasMouseMove(e, page);
+            this.handleCanvasMouseMove(this.lastMouseEvent, page);
             this.isDraggingRenderPending = false;
+            this.lastMouseEvent = null;
         });
     }
 
@@ -1036,10 +1107,62 @@ export class PDFEditorApp implements AppAction {
             return;
         }
 
+        // 回転ドラッグ
+        if (this.rotatingAnnotationId) {
+            const annotation = page.textAnnotations?.find(a => a.id === this.rotatingAnnotationId);
+            if (annotation) {
+                const ctx = this.elements.previewCanvas.getContext('2d')!;
+                const metrics = AnnotationManager.getTextMetrics(ctx, annotation.text, annotation.fontSize, this.previewScale);
+                const textWidthPdf = metrics.width / this.previewScale;
+                const textHeightPdf = metrics.height / this.previewScale;
+
+                const centerX = annotation.x + textWidthPdf / 2;
+                const centerY = annotation.y - textHeightPdf / 2;
+
+                // Canvas coords to PDF point
+                const point = AnnotationManager.toPdfPoint(
+                    canvasX,
+                    canvasY,
+                    this.previewScale,
+                    page.height,
+                    page.width,
+                    page.rotation
+                );
+
+                const dx = point.x - centerX;
+                const dy = point.y - centerY;
+
+                const currentAngle = Math.atan2(dy, dx);
+                const deltaAngle = currentAngle - this.rotationStartAngle;
+
+                // Convert radians to degrees
+                const deltaDeg = deltaAngle * 180 / Math.PI;
+
+                // +Rotation is CW (Visual). +Angle is CCW (Math, if Y up).
+                // So newRot = initial - deltaDeg.
+                let newRot = this.initialRotation - deltaDeg;
+                annotation.rotation = newRot;
+
+                if (this.renderManager) {
+                    this.renderManager.redrawWithCachedBackground(this.selectedAnnotationId);
+                } else {
+                    this.updateMainView();
+                }
+            }
+            return;
+        }
+
         // 注釈ドラッグ
         if (this.draggingAnnotation) {
             // Canvas座標をPDF座標に変換
-            const point = AnnotationManager.toPdfPoint(canvasX, canvasY, this.previewScale, page.height);
+            const point = AnnotationManager.toPdfPoint(
+                canvasX,
+                canvasY,
+                this.previewScale,
+                page.height,
+                page.width,
+                page.rotation
+            );
             const pdfX = point.x;
             const pdfY = point.y;
 
@@ -1112,7 +1235,14 @@ export class PDFEditorApp implements AppAction {
             if (page) {
                 const { x: canvasX, y: canvasY } = this.getCanvasPoint(e);
 
-                const point = AnnotationManager.toPdfPoint(canvasX, canvasY, this.previewScale, page.height);
+                const point = AnnotationManager.toPdfPoint(
+                    canvasX,
+                    canvasY,
+                    this.previewScale,
+                    page.height,
+                    page.width,
+                    page.rotation
+                );
                 const pdfX = point.x;
                 const pdfY = point.y;
 
@@ -1148,6 +1278,22 @@ export class PDFEditorApp implements AppAction {
                 this.updateMainView();
             }
             return;
+        }
+
+        // 回転終了
+        if (this.rotatingAnnotationId) {
+            const annotation = page?.textAnnotations?.find(a => a.id === this.rotatingAnnotationId);
+            if (annotation && page) {
+                this.pushUndo({
+                    type: 'rotateText',
+                    pageId: page.id,
+                    annotationId: annotation.id,
+                    oldRotation: this.initialRotation,
+                    newRotation: annotation.rotation || 0
+                });
+            }
+            this.rotatingAnnotationId = null;
+            this.elements.previewCanvas.style.cursor = 'default';
         }
 
         // 注釈ドラッグ終了
@@ -1227,7 +1373,14 @@ export class PDFEditorApp implements AppAction {
         const canvasX = (e.clientX - rect.left) * scaleX;
         const canvasY = (e.clientY - rect.top) * scaleY;
 
-        const point = AnnotationManager.toPdfPoint(canvasX, canvasY, this.previewScale, page.height);
+        const point = AnnotationManager.toPdfPoint(
+            canvasX,
+            canvasY,
+            this.previewScale,
+            page.height,
+            page.width,
+            page.rotation
+        );
         const pdfX = point.x;
         const pdfY = point.y;
 
@@ -1574,7 +1727,8 @@ export class PDFEditorApp implements AppAction {
                     this.state.selectedPageIndices = [];
                 }
                 this.renderPageList();
-                break;
+                this.updateMainView(); // Full render required
+                return; // Skip generic update
             }
 
             case 'batchDelete': {
@@ -1587,11 +1741,12 @@ export class PDFEditorApp implements AppAction {
                 this.state.selectedPageIndices = sorted.map(s => s.index);
                 this.state.selectedPageIndex = sorted[0].index;
                 this.renderPageList();
-                break;
+                this.updateMainView(); // Full render required
+                return; // Skip generic update
             }
         }
 
-        // 再描画
+        // 再描画 (注釈変更など、構造変化を伴わないもの)
         if (this.renderManager) {
             this.renderManager.redrawWithCachedBackground(null);
         } else {
@@ -1620,7 +1775,7 @@ export class PDFEditorApp implements AppAction {
                 }
                 this.renderPageList();
                 this.updateMainView();
-                break;
+                return;
 
             case 'movePage':
                 // 元の順序に戻すには from -> to だが、Undoでは to -> from したので
@@ -1633,7 +1788,7 @@ export class PDFEditorApp implements AppAction {
                 this.state.selectedPageIndex = action.toIndex;
                 this.renderPageList();
                 this.updateMainView();
-                break;
+                return;
 
             case 'rotatePage': {
                 const page = this.state.pages.find(p => p.id === action.pageId);
@@ -1641,7 +1796,7 @@ export class PDFEditorApp implements AppAction {
                     page.rotation = action.newRotation;
                     this.updateMainView();
                 }
-                break;
+                return;
             }
 
             case 'clear':
@@ -1650,7 +1805,7 @@ export class PDFEditorApp implements AppAction {
                 this.state.selectedPageIndex = -1;
                 this.renderPageList();
                 this.updateMainView();
-                break;
+                return;
 
             case 'addText': {
                 const page = this.state.pages.find(p => p.id === action.pageId);
@@ -1695,6 +1850,7 @@ export class PDFEditorApp implements AppAction {
                     this.state.selectedPageIndex = action.index;
                     this.renderPageList();
                     this.updateMainView();
+                    return;
                 }
                 break;
             }
@@ -1810,13 +1966,13 @@ export class PDFEditorApp implements AppAction {
                 this.pageManager.movePages(action.fromIndices, action.toIndex);
                 // ただしpushUndoは不要なので、undoManagerから最後のアクションを削除
                 this.undoManager.popUndo();
-                break;
+                return;
             }
 
             case 'batchRotate': {
                 this.pageManager.rotatePages(action.pageIds.map(id => this.state.pages.findIndex(p => p.id === id)).filter(i => i !== -1));
                 this.undoManager.popUndo();
-                break;
+                return;
             }
 
             case 'batchDuplicate': {
@@ -1829,7 +1985,7 @@ export class PDFEditorApp implements AppAction {
                 }
                 this.renderPageList();
                 this.updateMainView();
-                break;
+                return;
             }
 
             case 'batchDelete': {
@@ -1849,7 +2005,7 @@ export class PDFEditorApp implements AppAction {
                 }
                 this.renderPageList();
                 this.updateMainView();
-                break;
+                return;
             }
         }
     }
@@ -1901,6 +2057,7 @@ export class PDFEditorApp implements AppAction {
                             size: annotation.fontSize,
                             font,
                             color: rgb(r, g, b),
+                            rotate: degrees(annotation.rotation || 0),
                         });
                     }
                 }

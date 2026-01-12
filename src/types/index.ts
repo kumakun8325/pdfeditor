@@ -18,6 +18,8 @@ export interface TextAnnotation {
     fontSize: number;
     /** 色 (hex) */
     color: string;
+    /** 回転角度 (度, 時計回り) */
+    rotation?: number;
 }
 
 /**
@@ -127,6 +129,7 @@ export type UndoAction =
     | { type: 'addImage'; pageId: string; index: number; page?: PageData }
     | { type: 'duplicatePage'; pageId: string; index: number; page?: PageData }
     | { type: 'moveText'; pageId: string; annotationId: string; fromX: number; fromY: number; toX: number; toY: number }
+    | { type: 'rotateText'; pageId: string; annotationId: string; oldRotation: number; newRotation: number }
     | { type: 'moveHighlight'; pageId: string; annotationId: string; fromX: number; fromY: number; toX: number; toY: number }
     | { type: 'deleteText'; pageId: string; annotationId: string; annotation: TextAnnotation }
     | { type: 'deleteHighlight'; pageId: string; annotationId: string; annotation: HighlightAnnotation }
@@ -209,6 +212,11 @@ export interface UIElements {
     btnUndo: HTMLButtonElement;
     btnRedo: HTMLButtonElement;
     zoomLevel: HTMLSpanElement;
+
+    // ヘルプ
+    btnHelp: HTMLButtonElement;
+    helpModal: HTMLDivElement;
+    helpModalClose: HTMLButtonElement;
 }
 
 
@@ -231,7 +239,7 @@ export interface AppAction {
     duplicatePages(indices?: number[]): void;
     deletePages(indices?: number[]): void;
     clearPages(): void;
-    selectPage(index: number): void;
+
 
     // エクスポート
     exportCurrentPage(): void;
@@ -264,7 +272,9 @@ export interface AppAction {
     // D&D
     handleFileDrop(files: FileList): Promise<void>;
 
-    // State Access
+    // Selection
+    selectPage(index: number, multiSelect?: boolean, rangeSelect?: boolean): void;
+    selectAllPages(): void;
     getSelectedAnnotationId(): string | null;
 
     // Clipboard / Annotation Actions

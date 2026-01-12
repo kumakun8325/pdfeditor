@@ -221,6 +221,9 @@ export class EventManager {
         // Ctrl/Cmd + V: 貼り付け
         this.addCrossOsShortcut('v', () => this.app.handlePaste());
 
+        // Ctrl/Cmd + A: 全選択
+        this.addCrossOsShortcut('a', () => this.app.selectAllPages());
+
         // Delete / Backspace: 注釈削除
         // deleteキーはOSごとに挙動が違うことがあるので注意
         this.keyboardService.addShortcut('delete', [], () => this.app.deleteSelectedAnnotation());
@@ -228,6 +231,18 @@ export class EventManager {
 
         // 0: Reset Zoom
         this.addCrossOsShortcut('0', () => this.app.resetZoom());
+
+        // Navigation
+        this.keyboardService.addShortcut('arrowup', [], () => {
+            if (this.app.state.selectedPageIndex > 0) {
+                this.app.selectPage(this.app.state.selectedPageIndex - 1);
+            }
+        });
+        this.keyboardService.addShortcut('arrowdown', [], () => {
+            if (this.app.state.selectedPageIndex < this.app.state.pages.length - 1) {
+                this.app.selectPage(this.app.state.selectedPageIndex + 1);
+            }
+        });
     }
 
     // クロスOS対応のショートカット登録ヘルパー

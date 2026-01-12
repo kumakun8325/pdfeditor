@@ -14,6 +14,7 @@ export class RenderManager {
     private backgroundImageData: ImageData | null = null;
     private renderTask: any = null;
     private isThemeDark = false;
+    private currentRenderId = 0;
 
     constructor(
         private elements: UIElements,
@@ -76,26 +77,28 @@ export class RenderManager {
      * 指定されたページを描画
      */
     private async renderPage(): Promise<void> {
+        this.currentRenderId++;
+        const renderId = this.currentRenderId;
+
         const { state, elements } = this;
         const canvas = elements.previewCanvas;
         const ctx = canvas.getContext('2d');
 
         if (!ctx || state.selectedPageIndex < 0 || !state.pages[state.selectedPageIndex]) {
-            // クリアまたはエンプティ表示
             if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
             elements.pagePreview.classList.add('hidden');
-            elements.pagePreview.style.display = ''; // Clear inline if any
+            elements.pagePreview.style.display = '';
             elements.emptyState.classList.remove('hidden');
-            elements.emptyState.style.display = 'flex'; // Restore flex for centering
+            elements.emptyState.style.display = 'flex';
             return;
         }
 
         elements.pagePreview.classList.remove('hidden');
-        elements.pagePreview.style.display = ''; // Clear inline (let css handle it, or set block if needed)
+        elements.pagePreview.style.display = '';
         elements.emptyState.classList.add('hidden');
-        elements.emptyState.style.display = ''; // Clear inline (let hidden class handle it)
+        elements.emptyState.style.display = '';
 
-        // 前のレンダリングをキャンセル
+        // 前のPDレタリングをキャンセル
         if (this.renderTask) {
             this.renderTask.cancel();
             this.renderTask = null;
@@ -105,15 +108,12 @@ export class RenderManager {
 
         try {
             if (pageData.imageBytes || pageData.fullImage) {
-                await this.renderImagePage(pageData, ctx, canvas);
+                await this.renderImagePage(pageData, ctx, canvas, renderId);
             } else {
-                await this.renderPdfPage(pageData, ctx, canvas);
+                await this.renderPdfPage(pageData, ctx, canvas, renderId);
             }
 
-            // ImageDataの代わりにBitmapを使うため、getImageDataは不要だが
-            // 互換性のため、あるいはBitmap生成失敗時のフォールバックとして取得してもよい
-            // 今回はパフォーマンス重視でgetImageDataは省略し、
-            // redrawWithCachedBackground では key からキャッシュを取得する方式に変える
+            if (renderId !== this.currentRenderId) return;
 
             // 注釈を描画
             this.drawAnnotations(pageData, ctx);
@@ -125,14 +125,16 @@ export class RenderManager {
         }
     }
 
-    private async renderImagePage(pageData: PageData, ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement): Promise<void> {
+    private async renderImagePage(pageData: PageData, ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement, renderId: number): Promise<void> {
         // 画像ページ
         const img = new Image();
-        img.src = pageData.fullImage || pageData.thumbnail; // fullImage推奨
+        img.src = pageData.fullImage || pageData.thumbnail;
         await new Promise((resolve, reject) => {
             img.onload = resolve;
             img.onerror = reject;
         });
+
+        if (renderId !== this.currentRenderId) return;
 
         // 回転を考慮したサイズ計算
         const rotation = pageData.rotation || 0;
@@ -143,8 +145,8 @@ export class RenderManager {
         const displayHeight = pageData.height * this.previewScale;
 
         // Canvasサイズ設定
-        canvas.width = displayWidth;
-        canvas.height = displayHeight;
+        canvas.width = isRotated ? displayHeight : displayWidth;
+        canvas.height = isRotated ? displayWidth : displayHeight;
 
         // 背景塗りつぶし (ダークモード対応)
         ctx.fillStyle = this.isThemeDark ? '#2d2d2d' : '#ffffff';
@@ -165,6 +167,8 @@ export class RenderManager {
 
         // Bitmapとしてキャッシュに保存
         const bitmap = await createImageBitmap(canvas);
+        if (renderId !== this.currentRenderId) return; // 念のため
+
         const key = this.getCacheKey(pageData);
         if (this.pageCache.has(key)) {
             this.pageCache.get(key)?.close();
@@ -172,16 +176,14 @@ export class RenderManager {
         this.pageCache.set(key, bitmap);
     }
 
-    private async renderPdfPage(pageData: PageData, ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement): Promise<void> {
+    private async renderPdfPage(pageData: PageData, ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement, renderId: number): Promise<void> {
         if (!this.state.originalPdfBytes) return;
 
         const key = this.getCacheKey(pageData);
 
         // 1. キャッシュチェック
         if (this.pageCache.has(key)) {
-            // キャッシュヒット
             const bitmap = this.pageCache.get(key)!;
-            // Canvasサイズを合わせる
             if (canvas.width !== bitmap.width || canvas.height !== bitmap.height) {
                 canvas.width = bitmap.width;
                 canvas.height = bitmap.height;
@@ -191,12 +193,6 @@ export class RenderManager {
         }
 
         // 2. キャッシュミス - レンダリング実行
-
-        // オフスクリーンCanvasを作成してレンダリング
-        // (メインCanvasを直接使うと、途中経過が見えたり、クリア処理でちらつく可能性があるため)
-        // ただし、pdf.jsのrenderは直接Canvasに描くのが普通。
-        // ここではメインCanvasに描画 -> その後Bitmap生成の流れにする。
-
         const loadingTask = pdfjsLib.getDocument({
             data: this.state.originalPdfBytes.slice(0),
             cMapUrl: 'https://unpkg.com/pdfjs-dist@3.11.174/cmaps/',
@@ -204,10 +200,12 @@ export class RenderManager {
         });
 
         const pdfDoc = await loadingTask.promise;
+        if (renderId !== this.currentRenderId) return;
 
         if (pageData.originalPageIndex === undefined) return;
 
         const page = await pdfDoc.getPage(pageData.originalPageIndex + 1); // 1-based
+        if (renderId !== this.currentRenderId) return;
 
         const rotation = (pageData.rotation || 0) + page.rotate;
         const viewport = page.getViewport({ scale: this.previewScale, rotation });
@@ -225,18 +223,23 @@ export class RenderManager {
         };
 
         this.renderTask = page.render(renderContext);
-        await this.renderTask.promise;
+        try {
+            await this.renderTask.promise;
+        } catch (e) {
+            // Cancelled
+            return;
+        }
+
+        if (renderId !== this.currentRenderId) return;
 
         // レンダリング完了後、Bitmapを作成してキャッシュ
-        // Note: createImageBitmap は非同期
         const bitmap = await createImageBitmap(canvas);
 
-        // メモリリーク防止: 古い同一キーがあれば消す（上書きsetで自動だがcloseは必要）
         if (this.pageCache.has(key)) {
             this.pageCache.get(key)?.close();
         }
 
-        // キャッシュサイズ制限（簡易LRU - Insert順）
+        // キャッシュサイズ制限
         if (this.pageCache.size > 10) {
             const firstKey = this.pageCache.keys().next().value;
             if (firstKey) {
@@ -249,7 +252,7 @@ export class RenderManager {
     }
 
     private getCacheKey(pageData: PageData): string {
-        // ID + Scale + Rotation + Theme(背景色が変わるため)
+        // ID + Scale + Rotation + Theme
         const rotation = pageData.rotation || 0;
         return `${pageData.id}-${this.previewScale}-${rotation}-${this.isThemeDark}`;
     }
@@ -267,16 +270,17 @@ export class RenderManager {
         const cachedBitmap = this.pageCache.get(key);
 
         if (cachedBitmap) {
-            // 高速再描画：Bitmapを転送 (GPU -> GPU)
-            // Canvasサイズチェックは省略（renderPageで合わされているはず）
+            // Check canvas size mismatch (Critical for rotation undo)
+            if (canvas.width !== cachedBitmap.width || canvas.height !== cachedBitmap.height) {
+                canvas.width = cachedBitmap.width;
+                canvas.height = cachedBitmap.height;
+            }
             ctx.drawImage(cachedBitmap, 0, 0);
         } else {
-            // キャッシュがない場合（通常ありえないが）
-            // fallback: 背景クリアだけして注釈描画？ あるいは再レンダリング要求？
-            // ここでは真っ白＋注釈よりは、何もしないほうがマシか、あるいはとりあえずクリア
-            // もしキャッシュがないなら renderPdfPage を呼ぶべきだが、同期メソッドなので呼べない。
-            // しかたなく背景色でクリア
+            // キャッシュがない場合
             ctx.fillStyle = this.isThemeDark ? '#2d2d2d' : '#ffffff';
+            // ここでCanvasサイズリセットはできない（pageDataのwidth/height計算が必要だがsyncではないので）
+            // 現状のサイズでクリアするしかない
             ctx.fillRect(0, 0, canvas.width, canvas.height);
         }
 

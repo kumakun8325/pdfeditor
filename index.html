@@ -219,6 +219,14 @@
         </div>
       </div>
       <div class="toolbar-right">
+        <button id="btn-help" class="btn btn-icon" title="ヘルプ (ショートカット一覧)">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+            <line x1="12" y1="17" x2="12.01" y2="17"></line>
+          </svg>
+        </button>
         <button id="btn-theme" class="btn btn-icon" title="テーマ切り替え">
           <svg id="icon-light" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -342,6 +350,96 @@
         <div class="modal-footer">
           <button id="text-modal-cancel" class="btn btn-secondary">キャンセル</button>
           <button id="text-modal-ok" class="btn btn-primary">追加</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Help Modal -->
+    <div class="modal-overlay" id="help-modal" style="display: none;">
+      <div class="modal" style="max-width: 600px; width: 90vw;">
+        <div class="modal-header">
+          <h3>キーボードショートカット</h3>
+          <button id="help-modal-close" class="btn btn-icon">×</button>
+        </div>
+        <div class="modal-body" style="max-height: 70vh; overflow-y: auto;">
+          <table class="shortcut-table">
+            <thead>
+              <tr>
+                <th>機能</th>
+                <th>ショートカット (Win)</th>
+                <th>ショートカット (Mac)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>ファイルを開く</td>
+                <td><span class="shortcut-key">Ctrl</span> + <span class="shortcut-key">O</span></td>
+                <td><span class="shortcut-key">Cmd</span> + <span class="shortcut-key">O</span></td>
+              </tr>
+              <tr>
+                <td>保存</td>
+                <td><span class="shortcut-key">Ctrl</span> + <span class="shortcut-key">S</span></td>
+                <td><span class="shortcut-key">Cmd</span> + <span class="shortcut-key">S</span></td>
+              </tr>
+              <tr>
+                <td>元に戻す (Undo)</td>
+                <td><span class="shortcut-key">Ctrl</span> + <span class="shortcut-key">Z</span></td>
+                <td><span class="shortcut-key">Cmd</span> + <span class="shortcut-key">Z</span></td>
+              </tr>
+              <tr>
+                <td>やり直し (Redo)</td>
+                <td><span class="shortcut-key">Ctrl</span> + <span class="shortcut-key">Y</span></td>
+                <td><span class="shortcut-key">Cmd</span> + <span class="shortcut-key">Shift</span> + <span
+                    class="shortcut-key">Z</span></td>
+              </tr>
+              <tr>
+                <td>コピー</td>
+                <td><span class="shortcut-key">Ctrl</span> + <span class="shortcut-key">C</span></td>
+                <td><span class="shortcut-key">Cmd</span> + <span class="shortcut-key">C</span></td>
+              </tr>
+              <tr>
+                <td>貼り付け</td>
+                <td><span class="shortcut-key">Ctrl</span> + <span class="shortcut-key">V</span></td>
+                <td><span class="shortcut-key">Cmd</span> + <span class="shortcut-key">V</span></td>
+              </tr>
+              <tr>
+                <td>全選択</td>
+                <td><span class="shortcut-key">Ctrl</span> + <span class="shortcut-key">A</span></td>
+                <td><span class="shortcut-key">Cmd</span> + <span class="shortcut-key">A</span></td>
+              </tr>
+              <tr>
+                <td>削除 (ページ/注釈)</td>
+                <td><span class="shortcut-key">Delete</span> / <span class="shortcut-key">Ctrl</span> + <span
+                    class="shortcut-key">D</span></td>
+                <td><span class="shortcut-key">Delete</span> / <span class="shortcut-key">Cmd</span> + <span
+                    class="shortcut-key">D</span></td>
+              </tr>
+              <tr>
+                <td>拡大</td>
+                <td><span class="shortcut-key">Ctrl</span> + <span class="shortcut-key">+</span></td>
+                <td><span class="shortcut-key">Cmd</span> + <span class="shortcut-key">+</span></td>
+              </tr>
+              <tr>
+                <td>縮小</td>
+                <td><span class="shortcut-key">Ctrl</span> + <span class="shortcut-key">-</span></td>
+                <td><span class="shortcut-key">Cmd</span> + <span class="shortcut-key">-</span></td>
+              </tr>
+              <tr>
+                <td>ズームリセット</td>
+                <td><span class="shortcut-key">Ctrl</span> + <span class="shortcut-key">0</span></td>
+                <td><span class="shortcut-key">Cmd</span> + <span class="shortcut-key">0</span></td>
+              </tr>
+              <tr>
+                <td>ページ移動</td>
+                <td><span class="shortcut-key">↑</span> / <span class="shortcut-key">↓</span></td>
+                <td><span class="shortcut-key">↑</span> / <span class="shortcut-key">↓</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-primary"
+            onclick="document.getElementById('help-modal').style.display='none'">閉じる</button>
         </div>
       </div>
     </div>
