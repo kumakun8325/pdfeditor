@@ -197,3 +197,7 @@
 ## Phase 33: PWA対応
 - [ ] 33.1 Service Workerの設定
 - [ ] 33.2 マニフェストファイルの作成
+
+## Phase 34: Canva-like Features (Future)
+- [ ] 34.1 Analyze frequent Canva features (整理・分析)
+- [ ] 34.2 Implement identified features
