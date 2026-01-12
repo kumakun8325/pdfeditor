@@ -10,17 +10,16 @@ import { SelectionManager } from './managers/SelectionManager';
 import { DragDropManager } from './managers/DragDropManager';
 import { StorageService } from './services/StorageService';
 import { ContextMenuManager } from './managers/ContextMenuManager';
-import { ICONS } from './ui/icons';
-import type { AppState, PageData, ToastType, TextAnnotation, HighlightAnnotation, UndoAction, MenuItem } from './types';
+import { EventManager } from './managers/EventManager';
+import { ToolbarManager } from './managers/ToolbarManager';
+import { RenderManager } from './managers/RenderManager';
+import type { AppState, PageData, ToastType, TextAnnotation, HighlightAnnotation, UndoAction, UIElements, AppAction } from './types';
 import './styles/index.css';
 
 // Worker設定はPDFService側で行われる
 
-/**
- * PDF Editor メインアプリケーション
- */
-class PDFEditorApp {
-    private state: AppState = {
+export class PDFEditorApp implements AppAction {
+    public state: AppState = {
         pages: [],
         selectedPageIndex: -1,
         selectedPageIndices: [],
@@ -35,6 +34,9 @@ class PDFEditorApp {
     private pageManager: PageManager;
     private selectionManager: SelectionManager;
     private dragDropManager: DragDropManager;
+    private eventManager!: EventManager;
+    private toolbarManager!: ToolbarManager;
+    private renderManager!: RenderManager;
 
     // ドラッグ状態
     private draggingAnnotation: TextAnnotation | HighlightAnnotation | null = null;
@@ -44,21 +46,16 @@ class PDFEditorApp {
     private editingAnnotationId: string | null = null; // 編集中の注釈ID
     private clipboard: TextAnnotation | HighlightAnnotation | null = null; // コピー用
     private pageClipboard: PageData | null = null; // ページコピー用
-    private readonly baseScale = 1.5;
-    private currentZoom = 1.0;
+
     private get previewScale(): number {
-        return this.baseScale * this.currentZoom;
+        return this.renderManager?.getZoom() || 1.0;
     }
-    // レンダリング状態管理
-    private renderingRequestId = 0;
-    private isRendering = false;
-    private hasPendingRenderRequest = false;
-    private backgroundCanvas: HTMLCanvasElement | null = null;
-    private backgroundImageData: ImageData | null = null; // Deprecated but kept for type compat if needed
-    // キャッシュ判定用
-    private lastRenderedPageId: string | null = null;
-    private lastRenderedScale: number = 0;
-    private lastRenderedRotation: number = 0;
+
+    public get backgroundImageData(): ImageData | null {
+        return this.renderManager?.getBackgroundImageData() || null;
+    }
+
+
 
     // セッション保存
     private storageService: StorageService;
@@ -83,58 +80,25 @@ class PDFEditorApp {
         this.dragDropManager = new DragDropManager(() => this.state);
     }
 
-    private setupKeyboardShortcuts(): void {
-        this.keyboardService.init();
 
-        // Ctrl/Cmd + O: 開く
-        this.addCrossOsShortcut('o', () => this.elements.fileInput.click());
 
-        // Ctrl/Cmd + S: 保存
-        this.addCrossOsShortcut('s', () => {
-            if (this.state.pages.length > 0) this.savePDF();
-        });
-
-        // Ctrl/Cmd + D: ページ削除 (注釈選択中は注釈削除を優先したいが、ショートカットが競合する場合はDeleteキー推奨)
-        // ここでは Ctrl+D はページ削除のままにする
-        this.addCrossOsShortcut('d', () => this.deletePages());
-
-        // Delete / Backspace: 注釈削除
-        // deleteキーはOSごとに挙動が違うことがあるので注意
-        this.keyboardService.addShortcut('delete', [], () => this.deleteSelectedAnnotation());
-        this.keyboardService.addShortcut('backspace', [], () => this.deleteSelectedAnnotation());
-
-        // 矢印キー: ページ選択
-        this.keyboardService.addShortcut('arrowup', [], () => {
-            this.selectPage(this.state.selectedPageIndex - 1);
-        });
-        this.keyboardService.addShortcut('arrowdown', [], () => {
-            this.selectPage(this.state.selectedPageIndex + 1);
-        });
-
-        // Ctrl/Cmd + Z: 元に戻す
-        this.addCrossOsShortcut('z', () => this.undo());
-
-        // Ctrl/Cmd + Shift + Z or Ctrl/Cmd + Y: やり直し
-        this.addCrossOsShortcut('y', () => this.redo());
-        // Ctrl+Shift+Z (Windows) / Cmd+Shift+Z (Mac)
-        this.keyboardService.addShortcut('z', ['ctrl', 'shift'], () => this.redo());
-        this.keyboardService.addShortcut('z', ['meta', 'shift'], () => this.redo());
-
-        // Ctrl/Cmd + C: コピー
-        this.addCrossOsShortcut('c', () => this.handleCopy());
-
-        // Ctrl/Cmd + V: 貼り付け
-        this.addCrossOsShortcut('v', () => this.handlePaste());
-
-        // Ctrl + +, Ctrl + -: ズーム
-        this.keyboardService.addShortcut('=', ['ctrl'], () => this.zoomIn()); // + key
-        this.keyboardService.addShortcut('-', ['ctrl'], () => this.zoomOut()); // - key
-        this.keyboardService.addShortcut('0', ['ctrl'], () => this.resetZoom());
+    /**
+     * MouseEventからCanvas上の座標（Canvas座標系）を取得
+     */
+    private getCanvasPoint(e: MouseEvent): { x: number; y: number } {
+        const canvas = this.elements.previewCanvas;
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        return {
+            x: (e.clientX - rect.left) * scaleX,
+            y: (e.clientY - rect.top) * scaleY
+        };
     }
 
     // ... (unchanged code) ...
 
-    private deleteSelectedAnnotation(): void {
+    public deleteSelectedAnnotation(): void {
         if (!this.selectedAnnotationId || this.state.selectedPageIndex < 0) return;
 
         const page = this.state.pages[this.state.selectedPageIndex];
@@ -149,8 +113,8 @@ class PDFEditorApp {
                 page.textAnnotations.splice(index, 1);
                 this.selectedAnnotationId = null;
                 this.showToast('テキストを削除しました', 'success');
-                if (this.backgroundImageData) {
-                    this.redrawWithCachedBackground();
+                if (this.renderManager) {
+                    this.renderManager.redrawWithCachedBackground(this.selectedAnnotationId);
                 } else {
                     this.updateMainView();
                 }
@@ -167,8 +131,8 @@ class PDFEditorApp {
                 page.highlightAnnotations.splice(index, 1);
                 this.selectedAnnotationId = null;
                 this.showToast('ハイライトを削除しました', 'success');
-                if (this.backgroundImageData) {
-                    this.redrawWithCachedBackground();
+                if (this.renderManager) {
+                    this.renderManager.redrawWithCachedBackground(null);
                 } else {
                     this.updateMainView();
                 }
@@ -177,7 +141,7 @@ class PDFEditorApp {
         }
     }
 
-    private handleCopy(): void {
+    public handleCopy(): void {
         if (this.state.selectedPageIndex < 0) return;
         const page = this.state.pages[this.state.selectedPageIndex];
         if (!page) return;
@@ -218,7 +182,7 @@ class PDFEditorApp {
         this.showToast('ページをコピーしました', 'success');
     }
 
-    private handlePaste(): void {
+    public handlePaste(): void {
         if (this.state.selectedPageIndex < 0) return;
         const page = this.state.pages[this.state.selectedPageIndex];
         if (!page) return;
@@ -257,8 +221,8 @@ class PDFEditorApp {
             }
 
             this.showToast('注釈を貼り付けました', 'success');
-            if (this.backgroundImageData) {
-                this.redrawWithCachedBackground();
+            if (this.renderManager) {
+                this.renderManager.redrawWithCachedBackground(null);
             } else {
                 this.updateMainView();
             }
@@ -299,7 +263,7 @@ class PDFEditorApp {
         }
     }
 
-    private selectPage(index: number, multiSelect: boolean = false, rangeSelect: boolean = false): void {
+    public selectPage(index: number, multiSelect: boolean = false, rangeSelect: boolean = false): void {
         if (index < 0 || index >= this.state.pages.length) return;
 
         // ページ切り替え時に選択解除
@@ -322,9 +286,15 @@ class PDFEditorApp {
     private highlightStart: { x: number; y: number } | null = null;
     private highlightColor = '#ffff00'; // 黄色
 
-    // テキストリサイズ状態
-    private isResizingText = false;
-    private resizeStart: { y: number; fontSize: number; annotation: TextAnnotation } | null = null;
+    // リサイズ状態
+    private isResizing = false;
+    private resizeStart: {
+        x: number;
+        y: number;
+        originalSize: number | { width: number; height: number };
+        annotation: TextAnnotation | HighlightAnnotation;
+        type: 'text' | 'highlight';
+    } | null = null;
 
     // マネージャー
     private undoManager: UndoManager;
@@ -334,59 +304,8 @@ class PDFEditorApp {
 
 
     // DOM Elements
-    private elements!: {
-        btnOpen: HTMLButtonElement;
-        btnOpenHero: HTMLButtonElement; // 追加
-        btnSave: HTMLButtonElement;
-        btnSaveAs: HTMLButtonElement;
-        btnSplit: HTMLButtonElement;
-        btnClear: HTMLButtonElement;
-        btnAddImage: HTMLButtonElement;
-        btnMoveUp: HTMLButtonElement;
-        btnMoveDown: HTMLButtonElement;
-        btnRotate: HTMLButtonElement;
-        btnDuplicate: HTMLButtonElement;
-        btnDelete: HTMLButtonElement;
-        btnExportPng: HTMLButtonElement;
-        btnExportAll: HTMLButtonElement;
-        btnTheme: HTMLButtonElement;
-        fileInput: HTMLInputElement;
-        imageInput: HTMLInputElement;
-        pageList: HTMLDivElement;
-        mainView: HTMLElement; // 追加
-        dropZone: HTMLDivElement;
-        pageCount: HTMLSpanElement;
-        emptyState: HTMLDivElement;
-        pagePreview: HTMLDivElement;
-        previewCanvas: HTMLCanvasElement;
-        pageNav: HTMLDivElement;
-        pageIndicator: HTMLSpanElement;
-        btnPrev: HTMLButtonElement;
-        btnNext: HTMLButtonElement;
-        loadingOverlay: HTMLDivElement;
-        loadingText: HTMLParagraphElement;
-        toastContainer: HTMLDivElement;
-        iconLight: SVGElement;
-        iconDark: SVGElement;
-        // テキストモーダル
-        btnAddText: HTMLButtonElement;
-        textModal: HTMLDivElement;
-        textModalClose: HTMLButtonElement;
-        textModalCancel: HTMLButtonElement;
-        textModalOk: HTMLButtonElement;
-        textInput: HTMLTextAreaElement;
-        textSize: HTMLSelectElement;
-        textColor: HTMLInputElement;
-        // ハイライト
-        btnHighlight: HTMLButtonElement;
-        // ズーム
-        btnZoomIn: HTMLButtonElement;
-        btnZoomOut: HTMLButtonElement;
-        btnZoomReset: HTMLButtonElement;
-        btnUndo: HTMLButtonElement;
-        btnRedo: HTMLButtonElement;
-        zoomLevel: HTMLSpanElement;
-    };
+    // DOM Elements
+    private elements!: UIElements;
 
 
 
@@ -395,29 +314,27 @@ class PDFEditorApp {
      */
     async init(): Promise<void> {
         this.cacheElements();
-        this.bindEvents();
-        // Undo/Redo
-        this.elements.btnUndo.addEventListener('click', () => this.undo());
-        this.elements.btnRedo.addEventListener('click', () => this.redo());
 
-        // キーボードショートカット
-        this.setupKeyboardShortcuts();
+        // EventManager初期化
+        this.eventManager = new EventManager(
+            this,
+            this.elements,
+            this.dragDropManager,
+            this.contextMenuManager,
+            this.keyboardService
+        );
+        this.eventManager.bindEvents();
+
+        // ToolbarManager初期化
+        this.toolbarManager = new ToolbarManager(this.elements);
+        this.toolbarManager.setupDropdownMenus();
+
+        // RenderManager初期化
+        this.renderManager = new RenderManager(this.elements, () => this.state);
+
         this.loadThemePreference();
 
-        // ドロップダウンメニュー初期化
-        this.setupDropdownMenus();
-
-        // コンテキストメニュー初期化
-        this.setupContextMenu();
-
-        this.showLoading('アプリケーションを起動中...');
-        this.elements.emptyState.style.display = 'none'; // 初期化中は非表示
-
-        // Canvasの読み取り頻度が高いことをヒントとして設定 (背景キャッシュ用)
-        // this.elements.previewCanvas.getContext('2d', { willReadFrequently: true });
-        // Phase 24.6: Offscreen Canvas (drawImage) を使うため、GPUアクセラレーションを有効にするには
-        // willReadFrequently: true (CPU fallback) は逆効果の可能性があるため削除（または無効化）
-        // 特にdrawImageのパフォーマンスへ悪影響がある。
+        // レンダリングコンテキスト初期化
         this.elements.previewCanvas.getContext('2d');
 
 
@@ -438,6 +355,13 @@ class PDFEditorApp {
         } finally {
             this.hideLoading();
         }
+    }
+
+    /**
+     * 注釈IDを取得
+     */
+    public getSelectedAnnotationId(): string | null {
+        return this.selectedAnnotationId;
     }
 
     /**
@@ -472,161 +396,12 @@ class PDFEditorApp {
         }, this.SAVE_DEBOUNCE_MS);
     }
 
-    private setupDropdownMenus(): void {
-        const fileMenuBtn = document.getElementById('btn-file-menu');
-        const fileMenu = document.getElementById('file-menu');
-        const exportMenuBtn = document.getElementById('btn-export-menu');
-        const exportMenu = document.getElementById('export-menu');
 
-        // ファイルメニュー
-        fileMenuBtn?.addEventListener('click', (e) => {
-            e.stopPropagation();
-            fileMenu?.classList.toggle('show');
-            exportMenu?.classList.remove('show');
-        });
 
-        // エクスポートメニュー
-        exportMenuBtn?.addEventListener('click', (e) => {
-            e.stopPropagation();
-            exportMenu?.classList.toggle('show');
-            fileMenu?.classList.remove('show');
-        });
 
-        // 外部クリックで閉じる
-        document.addEventListener('click', () => {
-            fileMenu?.classList.remove('show');
-            exportMenu?.classList.remove('show');
-        });
 
-        // ドロップダウン内クリックでも閉じる（アイテム選択後）
-        fileMenu?.addEventListener('click', () => {
-            fileMenu?.classList.remove('show');
-        });
-        exportMenu?.addEventListener('click', () => {
-            exportMenu?.classList.remove('show');
-        });
-    }
 
-    private setupContextMenu(): void {
-        // --- ページリスト（サイドバー） ---
-        this.elements.pageList.addEventListener('contextmenu', (e) => {
-            e.preventDefault();
-            const target = (e.target as HTMLElement).closest('.page-thumbnail') as HTMLElement;
-            if (!target) return;
 
-            const index = parseInt(target.dataset.index || '-1', 10);
-            if (index === -1) return;
-
-            // 右クリック対象が選択に含まれているか確認
-            const isTargetSelected = this.state.selectedPageIndices.includes(index);
-
-            // ターゲットインデックス（未選択ページならそのページのみ、選択済みなら選択ページ全体）
-            const targetIndices = isTargetSelected ? undefined : [index];
-
-            // 視覚的フィードバック: 未選択ページの場合は一時的にハイライト
-            if (!isTargetSelected) {
-                target.classList.add('context-menu-target');
-            }
-
-            const onClose = () => {
-                target.classList.remove('context-menu-target');
-            };
-
-            const isMultiSelect = isTargetSelected && this.state.selectedPageIndices.length > 1;
-            const items: MenuItem[] = [];
-
-            // 表示用カウント
-            const count = targetIndices ? targetIndices.length : this.state.selectedPageIndices.length;
-
-            // ページ操作メニュー
-            items.push({
-                label: count > 1 ? `${count}ページを削除` : '削除',
-                icon: ICONS.TRASH,
-                danger: true,
-                action: () => this.deletePages(targetIndices)
-            });
-
-            items.push({ divider: true, label: '' });
-
-            items.push({
-                label: '右に回転 (90°)',
-                icon: ICONS.ROTATE_RIGHT,
-                action: () => this.rotatePages(targetIndices)
-            });
-
-            items.push({
-                label: '複製',
-                icon: ICONS.DUPLICATE,
-                action: () => this.duplicatePages(targetIndices)
-            });
-
-            // 単一対象時のみ移動可能
-            if (!isMultiSelect && count === 1) {
-                items.push({ divider: true, label: '' });
-                const actualIndex = targetIndices ? targetIndices[0] : index;
-
-                items.push({
-                    label: '上へ移動',
-                    disabled: actualIndex === 0,
-                    action: () => this.movePageUp(actualIndex)
-                });
-                items.push({
-                    label: '下へ移動',
-                    disabled: actualIndex === this.state.pages.length - 1,
-                    action: () => this.movePageDown(actualIndex)
-                });
-            }
-
-            this.contextMenuManager.show(e.clientX, e.clientY, items, onClose);
-        });
-
-        // --- メインビュー（注釈・ページ） ---
-        this.elements.pagePreview.addEventListener('contextmenu', (e) => {
-            e.preventDefault();
-
-            // 選択中の注釈がある場合
-            if (this.selectedAnnotationId && this.state.pages[this.state.selectedPageIndex]) {
-                const items: MenuItem[] = [];
-
-                items.push({
-                    label: '削除',
-                    danger: true,
-                    icon: ICONS.TRASH,
-                    action: () => {
-                        // Deleteキー押下イベントをシミュレート
-                        const event = new KeyboardEvent('keydown', { key: 'Delete' });
-                        document.dispatchEvent(event);
-                    }
-                });
-
-                items.push({
-                    label: 'コピー',
-                    action: () => {
-                        // Ctrl+Cイベントをシミュレート
-                        const event = new KeyboardEvent('keydown', { key: 'c', ctrlKey: true, metaKey: true });
-                        document.dispatchEvent(event);
-                    }
-                });
-
-                this.contextMenuManager.show(e.clientX, e.clientY, items);
-                return;
-            }
-
-            // 何もなければページ自体のメニューを表示
-            const items: MenuItem[] = [
-                {
-                    label: 'ページを削除',
-                    danger: true,
-                    action: () => this.deletePages()
-                },
-                {
-                    label: '右に回転',
-                    action: () => this.rotatePages()
-                }
-            ];
-            this.contextMenuManager.show(e.clientX, e.clientY, items);
-        });
-    }
 
     private cacheElements(): void {
         // 画像用の hidden input を動的に追加
@@ -647,6 +422,10 @@ class PDFEditorApp {
             btnSave: document.getElementById('btn-save') as HTMLButtonElement,
             btnSaveAs: document.getElementById('btn-save-as') as HTMLButtonElement,
             btnSplit: document.getElementById('btn-split') as HTMLButtonElement,
+            btnFileMenu: document.getElementById('btn-file-menu') as HTMLButtonElement,
+            fileMenu: document.getElementById('file-menu') as HTMLDivElement,
+            btnExportMenu: document.getElementById('btn-export-menu') as HTMLButtonElement,
+            exportMenu: document.getElementById('export-menu') as HTMLDivElement,
             btnClear: document.getElementById('btn-clear') as HTMLButtonElement,
             btnAddImage: document.getElementById('btn-add-image') as HTMLButtonElement,
             btnMoveUp: document.getElementById('btn-move-up') as HTMLButtonElement,
@@ -696,177 +475,15 @@ class PDFEditorApp {
         };
     }
 
-    private bindEvents(): void {
-        // ファイル選択
-        this.elements.btnOpen.addEventListener('click', () => {
-            this.elements.fileInput.click();
-        });
-
-        // ヒーローエリアの開くボタン
-        if (this.elements.btnOpenHero) {
-            this.elements.btnOpenHero.addEventListener('click', () => {
-                this.elements.fileInput.click();
-            });
-        }
-
-        this.elements.fileInput.addEventListener('change', async (e) => {
-            const file = (e.target as HTMLInputElement).files?.[0];
-            if (file) {
-                await this.loadPDF(file);
-            }
-        });
-
-        // 保存
-        this.elements.btnSave.addEventListener('click', () => {
-            this.savePDF();
-        });
-
-        // 名前を付けて保存
-        this.elements.btnSaveAs.addEventListener('click', () => {
-            this.saveAsPDF();
-        });
-
-        // 画像追加
-        this.elements.btnAddImage.addEventListener('click', () => {
-            this.elements.imageInput.click();
-        });
-
-        this.elements.imageInput.addEventListener('change', async (e) => {
-            const files = (e.target as HTMLInputElement).files;
-            if (files && files.length > 0) {
-                for (const file of Array.from(files)) {
-                    await this.insertImage(file);
-                }
-            }
-            // リセット（同じファイルを再選択可能に）
-            (e.target as HTMLInputElement).value = '';
-        });
-
-        // ページ移動
-        this.elements.btnMoveUp.addEventListener('click', () => {
-            this.movePageUp();
-        });
-
-        this.elements.btnMoveDown.addEventListener('click', () => {
-            this.movePageDown();
-        });
-
-        // ページ回転
-        this.elements.btnRotate.addEventListener('click', () => {
-            this.rotatePages();
-        });
-
-        // ページ複製
-        this.elements.btnDuplicate.addEventListener('click', () => {
-            this.duplicatePages();
-        });
-
-        // 画像保存
-        this.elements.btnExportPng.addEventListener('click', () => {
-            this.exportCurrentPage();
-        });
-
-        // 全保存
-        this.elements.btnExportAll.addEventListener('click', () => {
-            this.exportAllPages();
-        });
-
-        // バイナリ分割
-        this.elements.btnSplit.addEventListener('click', () => {
-            this.splitAndDownload();
-        });
-
-        // クリア
-        this.elements.btnClear.addEventListener('click', () => {
-            this.clearPages();
-        });
-
-        // ページ削除（ボタン）
-        this.elements.btnDelete.addEventListener('click', () => {
-            this.deletePages();
-        });
-
-        // テーマ切り替え
-        this.elements.btnTheme.addEventListener('click', () => {
-            this.toggleTheme();
-        });
-
-        // テキスト追加
-        this.elements.btnAddText.addEventListener('click', () => {
-            this.openTextModal();
-        });
-
-        // テキストモーダルイベント
-        this.elements.textModalClose.addEventListener('click', () => {
-            this.closeTextModal();
-        });
-        this.elements.textModalCancel.addEventListener('click', () => {
-            this.closeTextModal();
-        });
-        this.elements.textModalOk.addEventListener('click', () => {
-            this.addTextAnnotation();
-        });
-
-        // ドラッグ＆ドロップ
-        this.setupDropZone();
-
-        // ページナビゲーション
-        this.elements.btnPrev.addEventListener('click', () => {
-            this.selectPage(this.state.selectedPageIndex - 1);
-        });
-
-        this.elements.btnNext.addEventListener('click', () => {
-            this.selectPage(this.state.selectedPageIndex + 1);
-        });
-
-        // テキスト注釈のドラッグ / ハイライト描画
-        this.elements.previewCanvas.addEventListener('mousedown', (e) => this.onCanvasMouseDown(e));
-        this.elements.previewCanvas.addEventListener('mousemove', (e) => this.onCanvasMouseMove(e));
-        this.elements.previewCanvas.addEventListener('mouseup', (e) => this.onCanvasMouseUp(e));
-        this.elements.previewCanvas.addEventListener('mouseleave', () => this.onCanvasMouseLeave());
-        this.elements.previewCanvas.addEventListener('dblclick', (e) => this.onCanvasDoubleClick(e));
-
-        // ハイライトモードトグル
-        this.elements.btnHighlight.addEventListener('click', () => {
-            this.toggleHighlightMode();
-        });
-
-        // ズーム操作
-        this.elements.btnZoomIn.addEventListener('click', () => this.zoomIn());
-        this.elements.btnZoomOut.addEventListener('click', () => this.zoomOut());
-        this.elements.btnZoomReset.addEventListener('click', () => this.resetZoom());
-
-        // Ctrl + ホイールでズーム
-        window.addEventListener('wheel', (e) => {
-            if (e.ctrlKey) {
-                e.preventDefault();
-                if (e.deltaY < 0) {
-                    this.zoomIn();
-                } else {
-                    this.zoomOut();
-                }
-            }
-        }, { passive: false });
-    }
-
-    // クロスOS対応のショートカット登録ヘルパー
-    private addCrossOsShortcut(key: string, callback: () => void): void {
-        this.keyboardService.addShortcut(key, ['ctrl'], callback);
-        this.keyboardService.addShortcut(key, ['meta'], callback);
-    }
 
 
 
-    private setupDropZone(): void {
-        const dropZone = document.getElementById('drop-zone');
-        if (!dropZone) return;
 
-        this.dragDropManager.setupDropZone(dropZone, (files) => {
-            this.handleFileDrop(files);
-        });
-    }
 
-    private async handleFileDrop(files: FileList): Promise<void> {
+
+
+
+    public async handleFileDrop(files: FileList): Promise<void> {
         for (const file of Array.from(files)) {
             const ext = file.name.toLowerCase().split('.').pop();
 
@@ -880,7 +497,7 @@ class PDFEditorApp {
         }
     }
 
-    private async loadPDF(file: File): Promise<void> {
+    public async loadPDF(file: File): Promise<void> {
         this.showLoading('PDFを読み込み中...');
 
         const result = await this.pdfService.loadPDF(file);
@@ -907,7 +524,7 @@ class PDFEditorApp {
         this.hideLoading();
     }
 
-    private async insertImage(file: File): Promise<void> {
+    public async insertImage(file: File): Promise<void> {
         this.showLoading('画像を処理中...');
 
         try {
@@ -952,7 +569,7 @@ class PDFEditorApp {
         this.hideLoading();
     }
 
-    private deletePages(targetIndices?: number[]): void {
+    public deletePages(targetIndices?: number[]): void {
         const indicesToDelete = targetIndices
             ? [...targetIndices]
             : [...this.state.selectedPageIndices];
@@ -977,7 +594,7 @@ class PDFEditorApp {
 
     private movePage(direction: 'up' | 'down', targetIndex: number = this.state.selectedPageIndex): void {
         const index = targetIndex;
-        const newIndex = direction === 'up' ? index - 1 : index + 1;
+        const newIndex = direction === 'up' ? index - 1 : index + 2;
 
         // Note: Validation is done in pageManager, but checking locally to avoid UI message if invalid?
         // PageManager.movePage will return early if invalid.
@@ -998,15 +615,15 @@ class PDFEditorApp {
         this.showToast(`ページを${direction === 'up' ? '上' : '下'}に移動しました`, 'success');
     }
 
-    private movePageUp(index?: number): void {
+    public movePageUp(index?: number): void {
         this.movePage('up', index);
     }
 
-    private movePageDown(index?: number): void {
+    public movePageDown(index?: number): void {
         this.movePage('down', index);
     }
 
-    private rotatePages(targetIndices?: number[]): void {
+    public rotatePages(targetIndices?: number[]): void {
         const indices = targetIndices || this.state.selectedPageIndices;
         if (indices.length === 0 || this.state.pages.length === 0) return;
 
@@ -1018,7 +635,7 @@ class PDFEditorApp {
         this.showToast(msg, 'success');
     }
 
-    private duplicatePages(targetIndices?: number[]): void {
+    public duplicatePages(targetIndices?: number[]): void {
         const indices = targetIndices || this.state.selectedPageIndices;
         if (indices.length === 0 || this.state.pages.length === 0) return;
 
@@ -1092,118 +709,14 @@ class PDFEditorApp {
     }
 
     private async updateMainView(): Promise<void> {
-        if (this.state.pages.length === 0 || this.state.selectedPageIndex < 0) {
-            this.elements.emptyState.style.display = 'flex';
-            this.elements.pagePreview.style.display = 'none';
-            this.elements.pageNav.style.display = 'none';
-            return;
-        }
-
-        // 既にレンダリング中なら、リクエストを予約して終了
-        if (this.isRendering) {
-            console.log('Skipping render: already rendering');
-            this.hasPendingRenderRequest = true;
-            return;
-        }
-
-        this.isRendering = true;
-        this.hasPendingRenderRequest = false;
-
-        // request IDは不要になったが、念のため残すか、削除してもよい。
-        // ここでは排他制御によりIDチェックは必須ではなくなる
-        ++this.renderingRequestId;
-
-        this.elements.emptyState.style.display = 'none';
-        this.elements.pagePreview.style.display = 'flex';
-        this.elements.pageNav.style.display = 'flex';
-
-        const page = this.state.pages[this.state.selectedPageIndex];
-        const currentRotation = page.rotation || 0;
-
-        // キャッシュ有効確認 (Smart Cache Check)
-        const canReuseCache = this.backgroundCanvas &&
-            this.lastRenderedPageId === page.id &&
-            Math.abs(this.lastRenderedScale - this.previewScale) < 0.001 &&
-            this.lastRenderedRotation === currentRotation;
-
-        if (canReuseCache) {
-            this.redrawWithCachedBackground();
-            this.isRendering = false;
-            this.elements.emptyState.style.display = 'none';
-            this.elements.pagePreview.style.display = 'flex';
-            this.elements.pageNav.style.display = 'flex';
-            this.updatePageNav();
-
-            // 待機リクエストチェック
-            if (this.hasPendingRenderRequest) {
-                this.hasPendingRenderRequest = false; // キャッシュヒットしたらリクエスト消化扱い
-            }
-            return;
-        }
-
-        try {
-            await this.pdfService.renderToCanvas(
-                this.elements.previewCanvas,
-                page,
-                this.previewScale
-            );
-
-            // キャッシュ状態更新
-            this.lastRenderedPageId = page.id;
-            this.lastRenderedScale = this.previewScale;
-            this.lastRenderedRotation = currentRotation;
-
-            // 背景をキャッシュ
-            // 背景をキャッシュ (Offscreen Canvas)
-            if (!this.backgroundCanvas) {
-                this.backgroundCanvas = document.createElement('canvas');
-            }
-            this.backgroundCanvas.width = this.elements.previewCanvas.width;
-            this.backgroundCanvas.height = this.elements.previewCanvas.height;
-            const bgCtx = this.backgroundCanvas.getContext('2d')!;
-            bgCtx.drawImage(this.elements.previewCanvas, 0, 0);
-
-            // Deprecated: ImageData is slow
-            this.backgroundImageData = null;
-            // We set it to null but keep the property for compatibility if I missed any check.
-            // Actually, I should use backgroundCanvas flag.
-            // But let's set backgroundImageData to a dummy or update checks.
-            // Better: update checks to use backgroundCanvas.
-            // I'll update redrawWithCachedBackground below.
-
-            // テキスト注釈を描画
-            this.drawTextAnnotations();
-
-            this.updatePageNav();
-        } catch (error) {
-            console.error('Render error:', error);
-            this.showToast('プレビューの表示に失敗しました', 'error');
-        } finally {
-            this.isRendering = false;
-
-            // 待機中のリクエストがあれば実行
-            if (this.hasPendingRenderRequest) {
-                this.updateMainView();
-            }
+        if (this.renderManager) {
+            await this.renderManager.renderMainView();
         }
     }
 
-    private drawTextAnnotations(): void {
-        const page = this.state.pages[this.state.selectedPageIndex];
-        if (!page) return;
 
-        const ctx = this.elements.previewCanvas.getContext('2d', { willReadFrequently: true })!;
-        AnnotationManager.drawAnnotations(ctx, page, this.previewScale, this.selectedAnnotationId);
-    }
 
-    private redrawWithCachedBackground(): void {
-        if (!this.backgroundCanvas) return;
 
-        const ctx = this.elements.previewCanvas.getContext('2d')!;
-        ctx.clearRect(0, 0, this.elements.previewCanvas.width, this.elements.previewCanvas.height);
-        ctx.drawImage(this.backgroundCanvas, 0, 0);
-        this.drawTextAnnotations();
-    }
 
     private updatePageNav(): void {
         const current = this.state.selectedPageIndex + 1;
@@ -1216,33 +729,14 @@ class PDFEditorApp {
     }
 
     private updateUI(): void {
-        const hasPages = this.state.pages.length > 0;
-        const selectedIndex = this.state.selectedPageIndex;
-
-        this.elements.btnSave.disabled = !hasPages;
-        this.elements.btnSaveAs.disabled = !hasPages;
-        this.elements.btnSplit.disabled = !hasPages;
-        this.elements.btnMoveUp.disabled = !hasPages || selectedIndex <= 0;
-        this.elements.btnMoveDown.disabled = !hasPages || selectedIndex >= this.state.pages.length - 1;
-        this.elements.btnRotate.disabled = !hasPages || selectedIndex < 0;
-        this.elements.btnDuplicate.disabled = !hasPages || selectedIndex < 0;
-        this.elements.btnDelete.disabled = !hasPages || selectedIndex < 0;
-        this.elements.btnClear.disabled = !hasPages;
-        this.elements.btnAddText.disabled = !hasPages || selectedIndex < 0;
-        this.elements.btnHighlight.disabled = !hasPages || selectedIndex < 0;
-        this.elements.btnExportPng.disabled = !hasPages || selectedIndex < 0;
-        this.elements.btnExportAll.disabled = !hasPages;
-
-        // Undo/Redoボタンの状態更新
-        this.elements.btnUndo.disabled = !this.undoManager.canUndo();
-        this.elements.btnRedo.disabled = !this.undoManager.canRedo();
-
-        this.elements.pageCount.textContent = hasPages
-            ? `${this.state.pages.length}ページ`
-            : '';
+        this.toolbarManager.update(
+            this.state,
+            this.undoManager.canUndo(),
+            this.undoManager.canRedo()
+        );
     }
 
-    private clearPages(): void {
+    public clearPages(): void {
         if (!confirm('すべてのページを削除しますか？\nこの操作は元に戻せます。')) return;
 
         this.pageManager.clearPages();
@@ -1256,7 +750,7 @@ class PDFEditorApp {
         this.showToast('ページをクリアしました', 'success');
     }
 
-    private openTextModal(annotation?: TextAnnotation): void {
+    public openTextModal(annotation?: TextAnnotation): void {
         this.disableHighlightMode(); // マーカーモード解除
         this.elements.textModal.style.display = 'flex';
 
@@ -1277,12 +771,12 @@ class PDFEditorApp {
         this.elements.textInput.focus();
     }
 
-    private closeTextModal(): void {
+    public closeTextModal(): void {
         this.elements.textModal.style.display = 'none';
         this.editingAnnotationId = null;
     }
 
-    private addTextAnnotation(): void {
+    public addTextAnnotation(): void {
         const text = this.elements.textInput.value.trim();
         if (!text) return;
 
@@ -1345,26 +839,21 @@ class PDFEditorApp {
 
         this.closeTextModal();
         // キャッシュ背景がある場合はそれを使用、なければフル再描画
-        if (this.backgroundImageData) {
-            this.redrawWithCachedBackground();
+        if (this.renderManager) {
+            this.renderManager.redrawWithCachedBackground(null);
         } else {
             this.updateMainView();
         }
     }
 
-    private onCanvasMouseDown(e: MouseEvent): void {
+
+
+    public onCanvasMouseDown(e: MouseEvent): void {
         const page = this.state.pages[this.state.selectedPageIndex];
         if (!page) return;
 
-        const canvas = this.elements.previewCanvas;
-        const rect = canvas.getBoundingClientRect();
-
-        // 表示サイズと内部サイズの比率を計算
-        const scaleX = canvas.width / rect.width;
-        const scaleY = canvas.height / rect.height;
-
-        const canvasX = (e.clientX - rect.left) * scaleX;
-        const canvasY = (e.clientY - rect.top) * scaleY;
+        // Canvas座標取得
+        const { x: canvasX, y: canvasY } = this.getCanvasPoint(e);
 
         // Canvas座標をPDF座標に変換
         const point = AnnotationManager.toPdfPoint(canvasX, canvasY, this.previewScale, page.height);
@@ -1377,7 +866,11 @@ class PDFEditorApp {
             this.highlightStart = { x: pdfX, y: pdfY };
             // 選択解除
             this.selectedAnnotationId = null;
-            if (this.backgroundImageData) this.redrawWithCachedBackground();
+            if (this.renderManager) {
+                this.renderManager.redrawWithCachedBackground(null);
+            } else {
+                this.updateMainView();
+            }
             e.preventDefault();
             return;
         }
@@ -1395,11 +888,13 @@ class PDFEditorApp {
             );
 
             if (hitHandle) {
-                this.isResizingText = true;
+                this.isResizing = true;
                 this.resizeStart = {
+                    x: e.clientX,
                     y: e.clientY,
-                    fontSize: hitHandle.fontSize,
-                    annotation: hitHandle
+                    originalSize: hitHandle.fontSize,
+                    annotation: hitHandle,
+                    type: 'text'
                 };
                 this.elements.previewCanvas.style.cursor = 'nwse-resize';
                 e.preventDefault();
@@ -1417,9 +912,32 @@ class PDFEditorApp {
             this.dragOffset.x = pdfX - hitText.x;
             this.dragOffset.y = pdfY - hitText.y;
             this.elements.previewCanvas.style.cursor = 'grabbing';
-            this.redrawWithCachedBackground();
+            if (this.renderManager) {
+                this.renderManager.redrawWithCachedBackground(this.selectedAnnotationId);
+            } else {
+                this.updateMainView();
+            }
             e.preventDefault();
             return;
+
+        }
+
+        // 1.5 ハイライト注釈のリサイズハンドル判定
+        if (this.selectedAnnotationId) {
+            const hitHighlight = AnnotationManager.hitTestHighlightHandle(page, pdfX, pdfY, this.selectedAnnotationId, this.previewScale);
+            if (hitHighlight) {
+                this.isResizing = true;
+                this.resizeStart = {
+                    x: e.clientX,
+                    y: e.clientY,
+                    originalSize: { width: hitHighlight.width, height: hitHighlight.height },
+                    annotation: hitHighlight,
+                    type: 'highlight'
+                };
+                this.draggingAnnotation = null; // リサイズ中は移動しない
+                e.preventDefault();
+                return;
+            }
         }
 
         // 2. ハイライト注釈のヒット判定
@@ -1431,7 +949,11 @@ class PDFEditorApp {
             this.dragOffset.x = pdfX - hitHighlight.x;
             this.dragOffset.y = pdfY - hitHighlight.y;
             this.elements.previewCanvas.style.cursor = 'grabbing';
-            this.redrawWithCachedBackground();
+            if (this.renderManager) {
+                this.renderManager.redrawWithCachedBackground(this.selectedAnnotationId);
+            } else {
+                this.updateMainView();
+            }
             e.preventDefault();
             return;
         }
@@ -1439,13 +961,17 @@ class PDFEditorApp {
         // ヒットしない場合は選択解除
         if (this.selectedAnnotationId) {
             this.selectedAnnotationId = null;
-            this.redrawWithCachedBackground();
+            if (this.renderManager) {
+                this.renderManager.redrawWithCachedBackground(null);
+            } else {
+                this.updateMainView();
+            }
         }
     }
 
     private isDraggingRenderPending = false;
 
-    private onCanvasMouseMove(e: MouseEvent): void {
+    public onCanvasMouseMove(e: MouseEvent): void {
         const page = this.state.pages[this.state.selectedPageIndex];
         if (!page) return;
 
@@ -1453,7 +979,7 @@ class PDFEditorApp {
         const isHighlightDragging = this.isHighlightMode && !!this.highlightStart;
         const isAnnotationDragging = !!this.draggingAnnotation;
         // リサイズ中
-        if (this.isResizingText) {
+        if (this.isResizing && this.resizeStart) {
             e.preventDefault();
             // リサイズ処理は直接handleCanvasMouseMoveで行うか、ここで行うか。
             // requestAnimationFrameを使う既存ロジックに乗せる。
@@ -1481,18 +1007,17 @@ class PDFEditorApp {
     }
 
     private handleCanvasMouseMove(e: MouseEvent, page: PageData): void {
+        const { x: canvasX, y: canvasY } = this.getCanvasPoint(e);
         const canvas = this.elements.previewCanvas;
-        const rect = canvas.getBoundingClientRect();
-        const scaleX = canvas.width / rect.width;
-        const scaleY = canvas.height / rect.height;
-        const canvasX = (e.clientX - rect.left) * scaleX;
-        const canvasY = (e.clientY - rect.top) * scaleY;
 
         // ハイライトモードでドラッグ中はプレビュー矩形を描画
         if (this.isHighlightMode && this.highlightStart) {
             if (!this.backgroundImageData) return;
-
-            this.redrawWithCachedBackground();
+            if (this.renderManager) {
+                this.renderManager.redrawWithCachedBackground(null);
+            } else {
+                this.updateMainView();
+            }
             const ctx = canvas.getContext('2d')!;
 
             const startCanvasX = this.highlightStart.x * this.previewScale;
@@ -1523,48 +1048,69 @@ class PDFEditorApp {
             this.draggingAnnotation.y = pdfY - this.dragOffset.y;
 
             // キャッシュ背景を使って再描画
-            this.redrawWithCachedBackground();
+            if (this.renderManager) {
+                this.renderManager.redrawWithCachedBackground(this.selectedAnnotationId);
+            } else {
+                this.updateMainView();
+            }
             return; // 終了
         }
 
-        // テキストリサイズ
-        if (this.isResizingText && this.resizeStart) {
+        // リサイズ
+        if (this.isResizing && this.resizeStart) {
+            const dx = e.clientX - this.resizeStart.x;
             const dy = e.clientY - this.resizeStart.y;
-            // マウス移動量(px)をフォントサイズに加算
-            // ズームレベル(scale)を考慮するか？
-            // e.clientYは画面座標系。フォントサイズも画面上の見た目サイズ変化に対応させたいが、
-            // 保存されるfontSizeは「PDF空間でのフォントサイズ」ではなく「論理フォントサイズ」(描画時にscale倍される)。
-            // したがって、画面上の移動pxをscaleで割る必要はない？
-            // いえ、fontSize * scale で描画されるので、画面上で 10px 動かしたら fontSize も 10/scale 増減すべき。
 
-            // 例: scale=2.0, fontSize=16 (drawing size 32). Drag +20px -> drawing size 52 -> fontSize 26 (+10).
-            // deltaFontSize = dy / this.previewScale;
+            if (this.resizeStart.type === 'text') {
+                const startSize = this.resizeStart.originalSize as number;
+                const delta = dy / this.previewScale;
+                let newSize = startSize + delta;
+                newSize = Math.max(8, Math.min(newSize, 300));
 
-            // 直感的には、ドラッグした距離分だけボックスが大きくなる感じ。
-            const delta = dy / this.previewScale;
-            let newSize = this.resizeStart.fontSize + delta;
+                (this.resizeStart.annotation as TextAnnotation).fontSize = newSize;
+            } else if (this.resizeStart.type === 'highlight') {
+                // width/height change
+                // originalSize is {width, height}
+                const startDims = this.resizeStart.originalSize as { width: number, height: number };
+                // delta in PDF coords
+                // dx is screen pixels. 
+                const dPdfX = dx / this.previewScale;
+                const dPdfY = dy / this.previewScale; // Y down on screen -> Y up on PDF? 
+                // Wait. drag right (+dx) -> width increases.
+                // drag down (+dy) -> height increases?
+                // highlight: y is top, height is downwards. dragging down increases height (bottom moves down).
+                // so simply adding abs delta?
 
-            // 制限
-            newSize = Math.max(8, Math.min(newSize, 300));
+                // Let's assume standard drag behavior:
+                // newWidth = startWidth + dPdfX
+                // newHeight = startHeight + dPdfY (since screen Y matches visual height direction)
 
-            this.resizeStart.annotation.fontSize = newSize;
-            this.redrawWithCachedBackground();
+                let newWidth = startDims.width + dPdfX;
+                let newHeight = startDims.height + dPdfY; // dragging down (+Y) increases visual height
+
+                newWidth = Math.max(5, newWidth);
+                newHeight = Math.max(5, newHeight);
+
+                const hl = this.resizeStart.annotation as HighlightAnnotation;
+                hl.width = newWidth;
+                hl.height = newHeight;
+            }
+
+            if (this.renderManager) {
+                this.renderManager.redrawWithCachedBackground(this.selectedAnnotationId);
+            } else {
+                this.updateMainView();
+            }
         }
     }
 
-    private onCanvasMouseUp(e: MouseEvent): void {
+    public onCanvasMouseUp(e: MouseEvent): void {
         const page = this.state.pages[this.state.selectedPageIndex];
 
         // ハイライトモードで範囲選択完了
         if (this.isHighlightMode && this.highlightStart) {
             if (page) {
-                const canvas = this.elements.previewCanvas;
-                const rect = canvas.getBoundingClientRect();
-                const scaleX = canvas.width / rect.width;
-                const scaleY = canvas.height / rect.height;
-
-                const canvasX = (e.clientX - rect.left) * scaleX;
-                const canvasY = (e.clientY - rect.top) * scaleY;
+                const { x: canvasX, y: canvasY } = this.getCanvasPoint(e);
 
                 const point = AnnotationManager.toPdfPoint(canvasX, canvasY, this.previewScale, page.height);
                 const pdfX = point.x;
@@ -1596,8 +1142,8 @@ class PDFEditorApp {
             }
             this.highlightStart = null;
             // キャッシュ背景を使用
-            if (this.backgroundImageData) {
-                this.redrawWithCachedBackground();
+            if (this.renderManager) {
+                this.renderManager.redrawWithCachedBackground(null);
             } else {
                 this.updateMainView();
             }
@@ -1612,29 +1158,51 @@ class PDFEditorApp {
             this.elements.previewCanvas.style.cursor = 'default';
         }
         // リサイズ終了
-        if (this.isResizingText && this.resizeStart) {
+        if (this.isResizing && this.resizeStart) {
             const ann = this.resizeStart.annotation;
-            if (Math.abs(ann.fontSize - this.resizeStart.fontSize) > 0.5) {
-                this.pushUndo({
-                    type: 'updateText',
-                    pageId: page.id,
-                    annotationId: ann.id,
-                    oldText: ann.text,
-                    newText: ann.text,
-                    oldColor: ann.color,
-                    newColor: ann.color,
-                    oldFontSize: this.resizeStart.fontSize,
-                    newFontSize: ann.fontSize
-                });
+
+            if (this.resizeStart.type === 'text') {
+                const startSize = this.resizeStart.originalSize as number;
+                const textAnn = ann as TextAnnotation;
+
+                if (Math.abs(textAnn.fontSize - startSize) > 0.5) {
+                    this.pushUndo({
+                        type: 'updateText',
+                        pageId: page.id,
+                        annotationId: textAnn.id,
+                        oldText: textAnn.text,
+                        newText: textAnn.text,
+                        oldColor: textAnn.color,
+                        newColor: textAnn.color,
+                        oldFontSize: startSize,
+                        newFontSize: textAnn.fontSize
+                    });
+                }
+            } else if (this.resizeStart.type === 'highlight') {
+                const startDims = this.resizeStart.originalSize as { width: number, height: number };
+                const hlAnn = ann as HighlightAnnotation;
+
+                if (Math.abs(hlAnn.width - startDims.width) > 1 || Math.abs(hlAnn.height - startDims.height) > 1) {
+                    this.pushUndo({
+                        type: 'resizeHighlight',
+                        pageId: page.id,
+                        annotationId: hlAnn.id,
+                        oldWidth: startDims.width,
+                        newWidth: hlAnn.width,
+                        oldHeight: startDims.height,
+                        newHeight: hlAnn.height
+                    });
+                }
             }
-            this.isResizingText = false;
+
+            this.isResizing = false;
             this.resizeStart = null;
             this.elements.previewCanvas.style.cursor = 'default';
         }
     }
 
 
-    private onCanvasMouseLeave(): void {
+    public onCanvasMouseLeave(): void {
         this.highlightStart = null;
         if (this.draggingAnnotation) {
             this.commitAnnotationDrag();
@@ -1642,12 +1210,12 @@ class PDFEditorApp {
             this.draggingStart = null;
             this.elements.previewCanvas.style.cursor = 'default';
         }
-        if (this.isHighlightMode && this.backgroundImageData) {
-            this.redrawWithCachedBackground();
+        if (this.isHighlightMode && this.renderManager) {
+            this.renderManager.redrawWithCachedBackground(null);
         }
     }
 
-    private onCanvasDoubleClick(e: MouseEvent): void {
+    public onCanvasDoubleClick(e: MouseEvent): void {
         const page = this.state.pages[this.state.selectedPageIndex];
         if (!page) return;
 
@@ -1703,7 +1271,7 @@ class PDFEditorApp {
         }
     }
 
-    private toggleHighlightMode(): void {
+    public toggleHighlightMode(): void {
         this.isHighlightMode = !this.isHighlightMode;
         this.elements.btnHighlight.classList.toggle('active', this.isHighlightMode);
         this.elements.previewCanvas.style.cursor = this.isHighlightMode ? 'crosshair' : 'default';
@@ -1727,7 +1295,7 @@ class PDFEditorApp {
     /**
      * Undo実行
      */
-    private undo(): void {
+    public undo(): void {
         const action = this.undoManager.popUndo();
         if (!action) {
             this.showToast('取り消す操作がありません', 'warning');
@@ -1789,8 +1357,8 @@ class PDFEditorApp {
                             action.annotation = { ...page.textAnnotations[index] };
                         }
                         page.textAnnotations.splice(index, 1);
-                        if (this.backgroundImageData) {
-                            this.redrawWithCachedBackground();
+                        if (this.renderManager) {
+                            this.renderManager.redrawWithCachedBackground(this.selectedAnnotationId);
                         } else {
                             this.updateMainView();
                         }
@@ -1810,8 +1378,8 @@ class PDFEditorApp {
                         }
                         page.highlightAnnotations.splice(index, 1);
                         // キャッシュ背景を使用
-                        if (this.backgroundImageData) {
-                            this.redrawWithCachedBackground();
+                        if (this.renderManager) {
+                            this.renderManager.redrawWithCachedBackground(this.selectedAnnotationId);
                         } else {
                             this.updateMainView();
                         }
@@ -1857,8 +1425,8 @@ class PDFEditorApp {
                         ann.x = action.fromX;
                         ann.y = action.fromY;
                         // キャッシュ背景を使用
-                        if (this.backgroundImageData) {
-                            this.redrawWithCachedBackground();
+                        if (this.renderManager) {
+                            this.renderManager.redrawWithCachedBackground(this.selectedAnnotationId);
                         } else {
                             this.updateMainView();
                         }
@@ -1875,8 +1443,8 @@ class PDFEditorApp {
                         ann.x = action.fromX;
                         ann.y = action.fromY;
                         // キャッシュ背景を使用
-                        if (this.backgroundImageData) {
-                            this.redrawWithCachedBackground();
+                        if (this.renderManager) {
+                            this.renderManager.redrawWithCachedBackground(this.selectedAnnotationId);
                         } else {
                             this.updateMainView();
                         }
@@ -1890,8 +1458,8 @@ class PDFEditorApp {
                 if (page) {
                     if (!page.textAnnotations) page.textAnnotations = [];
                     page.textAnnotations.push(action.annotation);
-                    if (this.backgroundImageData) {
-                        this.redrawWithCachedBackground();
+                    if (this.renderManager) {
+                        this.renderManager.redrawWithCachedBackground(this.selectedAnnotationId);
                     } else {
                         this.updateMainView();
                     }
@@ -1904,8 +1472,8 @@ class PDFEditorApp {
                 if (page) {
                     if (!page.highlightAnnotations) page.highlightAnnotations = [];
                     page.highlightAnnotations.push(action.annotation);
-                    if (this.backgroundImageData) {
-                        this.redrawWithCachedBackground();
+                    if (this.renderManager) {
+                        this.renderManager.redrawWithCachedBackground(this.selectedAnnotationId);
                     } else {
                         this.updateMainView();
                     }
@@ -1921,8 +1489,25 @@ class PDFEditorApp {
                         ann.text = action.oldText;
                         ann.color = action.oldColor;
                         ann.fontSize = action.oldFontSize;
-                        if (this.backgroundImageData) {
-                            this.redrawWithCachedBackground();
+                        if (this.renderManager) {
+                            this.renderManager.redrawWithCachedBackground(this.selectedAnnotationId);
+                        } else {
+                            this.updateMainView();
+                        }
+                    }
+                }
+                break;
+            }
+
+            case 'resizeHighlight': {
+                const page = this.state.pages.find(p => p.id === action.pageId);
+                if (page && page.highlightAnnotations) {
+                    const ann = page.highlightAnnotations.find(a => a.id === action.annotationId);
+                    if (ann) {
+                        ann.width = action.oldWidth;
+                        ann.height = action.oldHeight;
+                        if (this.renderManager) {
+                            this.renderManager.redrawWithCachedBackground(this.selectedAnnotationId);
                         } else {
                             this.updateMainView();
                         }
@@ -2007,8 +1592,8 @@ class PDFEditorApp {
         }
 
         // 再描画
-        if (this.backgroundImageData) {
-            this.redrawWithCachedBackground();
+        if (this.renderManager) {
+            this.renderManager.redrawWithCachedBackground(null);
         } else {
             this.updateMainView();
         }
@@ -2018,7 +1603,7 @@ class PDFEditorApp {
     /**
      * Redo実行
      */
-    private redo(): void {
+    public redo(): void {
         const action = this.undoManager.popRedo();
         if (!action) {
             this.showToast('やり直す操作がありません', 'warning');
@@ -2073,8 +1658,8 @@ class PDFEditorApp {
                     // 再追加
                     if (!page.textAnnotations) page.textAnnotations = [];
                     page.textAnnotations.push({ ...action.annotation });
-                    if (this.backgroundImageData) {
-                        this.redrawWithCachedBackground();
+                    if (this.renderManager) {
+                        this.renderManager.redrawWithCachedBackground(this.selectedAnnotationId);
                     } else {
                         this.updateMainView();
                     }
@@ -2089,8 +1674,8 @@ class PDFEditorApp {
                     if (!page.highlightAnnotations) page.highlightAnnotations = [];
                     page.highlightAnnotations.push({ ...action.annotation });
                     // キャッシュ背景を使用
-                    if (this.backgroundImageData) {
-                        this.redrawWithCachedBackground();
+                    if (this.renderManager) {
+                        this.renderManager.redrawWithCachedBackground(this.selectedAnnotationId);
                     } else {
                         this.updateMainView();
                     }
@@ -2122,8 +1707,8 @@ class PDFEditorApp {
                         ann.x = action.toX;
                         ann.y = action.toY;
                         // キャッシュ背景を使用
-                        if (this.backgroundImageData) {
-                            this.redrawWithCachedBackground();
+                        if (this.renderManager) {
+                            this.renderManager.redrawWithCachedBackground(this.selectedAnnotationId);
                         } else {
                             this.updateMainView();
                         }
@@ -2140,8 +1725,8 @@ class PDFEditorApp {
                         ann.x = action.toX;
                         ann.y = action.toY;
                         // キャッシュ背景を使用
-                        if (this.backgroundImageData) {
-                            this.redrawWithCachedBackground();
+                        if (this.renderManager) {
+                            this.renderManager.redrawWithCachedBackground(this.selectedAnnotationId);
                         } else {
                             this.updateMainView();
                         }
@@ -2157,8 +1742,8 @@ class PDFEditorApp {
                     if (index !== -1) {
                         // Redo: 再度削除
                         page.textAnnotations.splice(index, 1);
-                        if (this.backgroundImageData) {
-                            this.redrawWithCachedBackground();
+                        if (this.renderManager) {
+                            this.renderManager.redrawWithCachedBackground(this.selectedAnnotationId);
                         } else {
                             this.updateMainView();
                         }
@@ -2174,8 +1759,8 @@ class PDFEditorApp {
                     if (index !== -1) {
                         // Redo: 再度削除
                         page.highlightAnnotations.splice(index, 1);
-                        if (this.backgroundImageData) {
-                            this.redrawWithCachedBackground();
+                        if (this.renderManager) {
+                            this.renderManager.redrawWithCachedBackground(this.selectedAnnotationId);
                         } else {
                             this.updateMainView();
                         }
@@ -2192,8 +1777,25 @@ class PDFEditorApp {
                         ann.text = action.newText;
                         ann.color = action.newColor;
                         ann.fontSize = action.newFontSize;
-                        if (this.backgroundImageData) {
-                            this.redrawWithCachedBackground();
+                        if (this.renderManager) {
+                            this.renderManager.redrawWithCachedBackground(this.selectedAnnotationId);
+                        } else {
+                            this.updateMainView();
+                        }
+                    }
+                }
+                break;
+            }
+
+            case 'resizeHighlight': {
+                const page = this.state.pages.find(p => p.id === action.pageId);
+                if (page && page.highlightAnnotations) {
+                    const ann = page.highlightAnnotations.find(a => a.id === action.annotationId);
+                    if (ann) {
+                        ann.width = action.newWidth;
+                        ann.height = action.newHeight;
+                        if (this.renderManager) {
+                            this.renderManager.redrawWithCachedBackground(this.selectedAnnotationId);
                         } else {
                             this.updateMainView();
                         }
@@ -2252,7 +1854,7 @@ class PDFEditorApp {
         }
     }
 
-    private async savePDF(): Promise<void> {
+    public async savePDF(): Promise<void> {
         if (this.state.pages.length === 0) return;
 
         this.showLoading('PDFを生成中...');
@@ -2315,7 +1917,7 @@ class PDFEditorApp {
         this.hideLoading();
     }
 
-    private async exportCurrentPage(): Promise<void> {
+    public async exportCurrentPage(): Promise<void> {
         if (this.state.selectedPageIndex < 0 || this.state.pages.length === 0) return;
 
         this.showLoading('画像を生成中...');
@@ -2334,7 +1936,7 @@ class PDFEditorApp {
         this.hideLoading();
     }
 
-    private async exportAllPages(): Promise<void> {
+    public async exportAllPages(): Promise<void> {
         if (this.state.pages.length === 0) return;
 
         this.showLoading('ZIPを生成中...');
@@ -2351,7 +1953,7 @@ class PDFEditorApp {
         this.hideLoading();
     }
 
-    private async splitAndDownload(): Promise<void> {
+    public async splitAndDownload(): Promise<void> {
         if (this.state.pages.length === 0) return;
 
         this.showLoading('PDFを分割中...');
@@ -2405,7 +2007,7 @@ class PDFEditorApp {
         URL.revokeObjectURL(url);
     }
 
-    private async saveAsPDF(): Promise<void> {
+    public async saveAsPDF(): Promise<void> {
         if (this.state.pages.length === 0) return;
 
         const fileName = prompt('ファイル名を入力してください:', 'document.pdf');
@@ -2470,15 +2072,12 @@ class PDFEditorApp {
         this.hideLoading();
     }
 
-    private updateThemeIcons(): void {
-        this.elements.iconLight.style.display = this.state.isDarkMode ? 'none' : 'block';
-        this.elements.iconDark.style.display = this.state.isDarkMode ? 'block' : 'none';
-    }
 
-    private toggleTheme(): void {
+
+    public toggleTheme(): void {
         this.state.isDarkMode = !this.state.isDarkMode;
         document.documentElement.classList.toggle('dark', this.state.isDarkMode);
-        this.updateThemeIcons();
+        this.toolbarManager.updateTheme(this.state.isDarkMode);
         localStorage.setItem('theme', this.state.isDarkMode ? 'dark' : 'light');
     }
 
@@ -2487,7 +2086,7 @@ class PDFEditorApp {
         const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
         this.state.isDarkMode = saved === 'dark' || (!saved && prefersDark);
         document.documentElement.classList.toggle('dark', this.state.isDarkMode);
-        this.updateThemeIcons();
+        this.toolbarManager.updateTheme(this.state.isDarkMode);
     }
 
     private showLoading(text: string): void {
@@ -2514,31 +2113,35 @@ class PDFEditorApp {
         }, 3000);
     }
 
-    // ズーム機能
-    private setZoom(zoom: number): void {
-        // 50% ~ 200% の範囲に制限
-        const newZoom = Math.max(0.5, Math.min(2.0, zoom));
-        if (this.currentZoom !== newZoom) {
-            this.currentZoom = newZoom;
-            this.elements.zoomLevel.textContent = `${Math.round(this.currentZoom * 100)}% `;
 
-            // 背景などを再描画
-            if (this.state.pages.length > 0) {
-                this.updateMainView();
-            }
+    public setZoom(zoomIn: boolean): void {
+        if (this.renderManager) {
+            const currentZoom = this.renderManager.getZoom();
+            let newZoom = zoomIn ? currentZoom + 0.1 : currentZoom - 0.1;
+
+            // 0.1, 0.2 ... のようにきれいに丸める
+            newZoom = Math.round(newZoom * 10) / 10;
+
+            this.renderManager.setZoom(newZoom);
+            this.toolbarManager.updateZoom(newZoom);
+            this.updateMainView();
         }
     }
 
-    private zoomIn(): void {
-        this.setZoom(this.currentZoom + 0.25);
+    public zoomIn(): void {
+        this.setZoom(true);
     }
 
-    private zoomOut(): void {
-        this.setZoom(this.currentZoom - 0.25);
+    public zoomOut(): void {
+        this.setZoom(false);
     }
 
-    private resetZoom(): void {
-        this.setZoom(1.0);
+    public resetZoom(): void {
+        if (this.renderManager) {
+            this.renderManager.setZoom(1.0);
+            this.toolbarManager.updateZoom(1.0);
+            this.updateMainView();
+        }
     }
 }
 

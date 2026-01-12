@@ -16,6 +16,23 @@ export class AnnotationManager {
     }
 
     /**
+     * テキストのサイズ（幅・高さ）を計算
+     */
+    public static getTextMetrics(
+        ctx: CanvasRenderingContext2D,
+        text: string,
+        fontSize: number,
+        scale: number
+    ): { width: number; height: number } {
+        ctx.save();
+        ctx.font = `${fontSize * scale}px sans-serif`;
+        const metrics = ctx.measureText(text);
+        const height = fontSize * scale;
+        ctx.restore();
+        return { width: metrics.width, height };
+    }
+
+    /**
      * PDF座標をCanvas座標に変換
      */
     public static toCanvasPoint(
@@ -90,7 +107,27 @@ export class AnnotationManager {
             this.drawHandle(ctx, canvasX, canvasY);
             this.drawHandle(ctx, canvasX + width, canvasY);
             this.drawHandle(ctx, canvasX, canvasY + height);
-            this.drawHandle(ctx, canvasX + width, canvasY + height);
+
+            // 右下（リサイズハンドル）
+            const handleSize = 10;
+            const brX = canvasX + width;
+            const brY = canvasY + height;
+
+            ctx.save();
+            ctx.fillStyle = '#ffffff';
+            ctx.strokeStyle = '#007aff';
+            ctx.lineWidth = 1;
+            ctx.translate(brX, brY);
+            ctx.fillRect(-handleSize / 2, -handleSize / 2, handleSize, handleSize);
+            ctx.strokeRect(-handleSize / 2, -handleSize / 2, handleSize, handleSize);
+
+            // 斜線アイコン
+            ctx.beginPath();
+            ctx.moveTo(-3, 3);
+            ctx.lineTo(3, -3);
+            ctx.stroke();
+            ctx.restore();
+
             ctx.restore();
         }
     }
@@ -115,8 +152,9 @@ export class AnnotationManager {
 
         // 選択されている場合は枠を描画
         if (isSelected) {
-            const metrics = ctx.measureText(annotation.text);
-            const textHeight = annotation.fontSize * scale; // 簡易的な高さ計算
+            const metrics = this.getTextMetrics(ctx, annotation.text, annotation.fontSize, scale);
+            const textWidth = metrics.width;
+            const textHeight = metrics.height;
             const padding = 4;
             // ハンドルサイズ
             const handleSize = 10;
@@ -127,17 +165,17 @@ export class AnnotationManager {
             ctx.strokeRect(
                 canvasX - padding,
                 canvasY - padding,
-                metrics.width + padding * 2,
+                textWidth + padding * 2,
                 textHeight + padding * 2
             );
 
             // ハンドルを描画 (四隅) -> リサイズ用は右下のみ強調
             this.drawHandle(ctx, canvasX - padding, canvasY - padding); // 左上
-            this.drawHandle(ctx, canvasX - padding + metrics.width + padding * 2, canvasY - padding); // 右上
+            this.drawHandle(ctx, canvasX - padding + textWidth + padding * 2, canvasY - padding); // 右上
             this.drawHandle(ctx, canvasX - padding, canvasY - padding + textHeight + padding * 2); // 左下
 
             // 右下（リサイズハンドル）だけ特別扱い
-            const brX = canvasX - padding + metrics.width + padding * 2;
+            const brX = canvasX - padding + textWidth + padding * 2;
             const brY = canvasY - padding + textHeight + padding * 2;
 
             // 下地 (白)
@@ -184,11 +222,10 @@ export class AnnotationManager {
             const ann = page.textAnnotations[i];
 
             // Canvas座標に変換して判定 (measureTextを使うため)
-            ctx.save();
-            ctx.font = `${ann.fontSize * scale}px sans-serif`;
-            const metrics = ctx.measureText(ann.text);
-            const textHeight = ann.fontSize * scale;
-            ctx.restore();
+            // Canvas座標に変換して判定 (measureTextを使うため)
+            const metrics = this.getTextMetrics(ctx, ann.text, ann.fontSize, scale);
+            const textWidth = metrics.width;
+            const textHeight = metrics.height;
 
             const padding = 4; // drawTextと合わせる
             const margin = 5; // ヒットマージン
@@ -201,7 +238,7 @@ export class AnnotationManager {
 
             const rectX = canvasPos.x - padding;
             const rectY = canvasPos.y - padding;
-            const rectW = metrics.width + padding * 2;
+            const rectW = textWidth + padding * 2;
             const rectH = textHeight + padding * 2;
 
             // タッチ判定用にクリック位置もCanvas変換
@@ -232,11 +269,9 @@ export class AnnotationManager {
         if (!ann) return null;
 
         // サイズ計測
-        ctx.save();
-        ctx.font = `${ann.fontSize * scale}px sans-serif`;
-        const metrics = ctx.measureText(ann.text);
-        const textHeight = ann.fontSize * scale;
-        ctx.restore();
+        const metrics = this.getTextMetrics(ctx, ann.text, ann.fontSize, scale);
+        const textWidth = metrics.width;
+        const textHeight = metrics.height;
 
         const padding = 4;
         const handleSize = 10;
@@ -245,7 +280,7 @@ export class AnnotationManager {
         const canvasPos = this.toCanvasPoint(ann.x, ann.y, scale, page.height);
 
         // 右下ハンドルの中心座標
-        const brX = canvasPos.x - padding + metrics.width + padding * 2;
+        const brX = canvasPos.x - padding + textWidth + padding * 2;
         const brY = canvasPos.y - padding + textHeight + padding * 2;
 
         const clickPos = this.toCanvasPoint(pdfX, pdfY, scale, page.height);
@@ -288,6 +323,40 @@ export class AnnotationManager {
                 return hl;
             }
         }
+        return null;
+    }
+    /**
+     * ハイライト注釈のリサイズハンドルヒット判定 (右下のみ)
+     */
+    public static hitTestHighlightHandle(
+        page: PageData,
+        pdfX: number,
+        pdfY: number,
+        targetAnnotationId: string,
+        scale: number = 1.0 // unused but consistent signature
+    ): HighlightAnnotation | null {
+        if (!page.highlightAnnotations) return null;
+
+        const hl = page.highlightAnnotations.find(a => a.id === targetAnnotationId);
+        if (!hl) return null;
+
+        // 画面上でのサイズ(px)をPDF座標系に換算
+        const handleSize = 10 / scale;
+
+
+        // ハイライトは (x, y) が左上 (PDF座標 Yは上の方が大きい)
+        // 右下座標 (PDF座標)
+        // x: hl.x + hl.width
+        // y: hl.y - hl.height 
+
+        const brX = hl.x + hl.width;
+        const brY = hl.y - hl.height;
+
+        // PDF座標での距離計算 (簡易的)
+        if (Math.abs(pdfX - brX) <= handleSize && Math.abs(pdfY - brY) <= handleSize) {
+            return hl;
+        }
+
         return null;
     }
 }

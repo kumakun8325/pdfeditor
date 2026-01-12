@@ -806,3 +806,8 @@ body {
     background: var(--border);
     margin: 6px 0;
 }
+
+/* Utility */
+.hidden {
+    display: none !important;
+}

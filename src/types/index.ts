@@ -131,6 +131,7 @@ export type UndoAction =
     | { type: 'deleteText'; pageId: string; annotationId: string; annotation: TextAnnotation }
     | { type: 'deleteHighlight'; pageId: string; annotationId: string; annotation: HighlightAnnotation }
     | { type: 'updateText'; pageId: string; annotationId: string; oldText: string; newText: string; oldColor: string; newColor: string; oldFontSize: number; newFontSize: number }
+    | { type: 'resizeHighlight'; pageId: string; annotationId: string; oldWidth: number; newWidth: number; oldHeight: number; newHeight: number }
     // バッチ操作
     | { type: 'batchMove'; fromIndices: number[]; toIndex: number; movedPageIds: string[] }
     | { type: 'batchRotate'; pageIds: string[]; previousRotations: number[] }
@@ -147,4 +148,127 @@ export interface MenuItem {
     disabled?: boolean;
     divider?: boolean; // 区切り線かどうか
     danger?: boolean; // 削除などの危険な操作用
+}
+
+/**
+ * UI要素の型定義
+ */
+export interface UIElements {
+    btnOpen: HTMLButtonElement;
+    btnOpenHero: HTMLButtonElement;
+    btnSave: HTMLButtonElement;
+    btnSaveAs: HTMLButtonElement;
+    btnSplit: HTMLButtonElement;
+    btnFileMenu: HTMLButtonElement;
+    fileMenu: HTMLDivElement;
+    btnExportMenu: HTMLButtonElement;
+    exportMenu: HTMLDivElement;
+    btnClear: HTMLButtonElement;
+    btnAddImage: HTMLButtonElement;
+    btnMoveUp: HTMLButtonElement;
+    btnMoveDown: HTMLButtonElement;
+    btnRotate: HTMLButtonElement;
+    btnDuplicate: HTMLButtonElement;
+    btnDelete: HTMLButtonElement;
+    btnExportPng: HTMLButtonElement;
+    btnExportAll: HTMLButtonElement;
+    btnTheme: HTMLButtonElement;
+    fileInput: HTMLInputElement;
+    imageInput: HTMLInputElement;
+    pageList: HTMLDivElement;
+    mainView: HTMLElement;
+    dropZone: HTMLDivElement;
+    pageCount: HTMLSpanElement;
+    emptyState: HTMLDivElement;
+    pagePreview: HTMLDivElement;
+    previewCanvas: HTMLCanvasElement;
+    pageNav: HTMLDivElement;
+    pageIndicator: HTMLSpanElement;
+    btnPrev: HTMLButtonElement;
+    btnNext: HTMLButtonElement;
+    loadingOverlay: HTMLDivElement;
+    loadingText: HTMLParagraphElement;
+    toastContainer: HTMLDivElement;
+    iconLight: SVGElement;
+    iconDark: SVGElement;
+    // テキストモーダル
+    btnAddText: HTMLButtonElement;
+    textModal: HTMLDivElement;
+    textModalClose: HTMLButtonElement;
+    textModalCancel: HTMLButtonElement;
+    textModalOk: HTMLButtonElement;
+    textInput: HTMLTextAreaElement;
+    textSize: HTMLSelectElement;
+    textColor: HTMLInputElement;
+    // ハイライト
+    btnHighlight: HTMLButtonElement;
+    // ズーム
+    btnZoomIn: HTMLButtonElement;
+    btnZoomOut: HTMLButtonElement;
+    btnZoomReset: HTMLButtonElement;
+    btnUndo: HTMLButtonElement;
+    btnRedo: HTMLButtonElement;
+    zoomLevel: HTMLSpanElement;
+}
+
+
+
+/**
+ * アプリケーションアクションインターフェース
+ * EventManagerから呼び出すメソッドを定義
+ */
+export interface AppAction {
+    state: AppState; // 追加
+    loadPDF(file: File): Promise<void>;
+    insertImage(file: File): Promise<void>;
+    savePDF(): Promise<void>;
+    saveAsPDF(): Promise<void>;
+
+    // ページ操作
+    movePageUp(index?: number): void;
+    movePageDown(index?: number): void;
+    rotatePages(indices?: number[]): void;
+    duplicatePages(indices?: number[]): void;
+    deletePages(indices?: number[]): void;
+    clearPages(): void;
+    selectPage(index: number): void;
+
+    // エクスポート
+    exportCurrentPage(): void;
+    exportAllPages(): void;
+    splitAndDownload(): void;
+
+    // UI操作
+    toggleTheme(): void;
+    openTextModal(): void;
+    closeTextModal(): void;
+    addTextAnnotation(): void;
+    toggleHighlightMode(): void;
+
+    // ズーム
+    zoomIn(): void;
+    zoomOut(): void;
+    resetZoom(): void;
+
+    // Undo/Redo
+    undo(): void;
+    redo(): void;
+
+    // Canvasイベント
+    onCanvasMouseDown(e: MouseEvent): void;
+    onCanvasMouseMove(e: MouseEvent): void;
+    onCanvasMouseUp(e: MouseEvent): void;
+    onCanvasMouseLeave(): void;
+    onCanvasDoubleClick(e: MouseEvent): void;
+
+    // D&D
+    handleFileDrop(files: FileList): Promise<void>;
+
+    // State Access
+    getSelectedAnnotationId(): string | null;
+
+    // Clipboard / Annotation Actions
+    handleCopy(): void;
+    handlePaste(): void;
+    deleteSelectedAnnotation(): void;
 }

@@ -1,25 +1,18 @@
 # PDF Editor - タスク一覧
 
 ## Phase 1: プロジェクト初期化
-
 - [x] 1.1 Vite + TypeScript プロジェクト作成
 - [x] 1.2 依存関係インストール（pdf-lib, pdfjs-dist）
 - [x] 1.3 TypeScript設定
 - [x] 1.4 基本ディレクトリ構成作成
 
----
-
 ## Phase 2: 基盤UI構築
-
 - [x] 2.1 CSS変数・グローバルスタイル定義
 - [x] 2.2 レイアウト（Sidebar + MainView）構築
 - [x] 2.3 Toolbar コンポーネント作成
 - [x] 2.4 ダークモード切り替え機能
 
----
-
 ## Phase 3: PDF読み込み・表示
-
 - [x] 3.1 PDFService 実装（pdf.js ラッパー）
 - [x] 3.2 PDF読み込み機能
 - [x] 3.3 サムネイル生成機能
@@ -27,10 +20,7 @@
 - [x] 3.5 MainView に選択ページ表示
 - [x] 3.6 ページ選択機能
 
----
-
 ## Phase 4: ページ操作機能
-
 - [x] 4.1 ドラッグ＆ドロップ（PDF挿入）
 - [x] 4.2 ドラッグ＆ドロップ（画像挿入）
 - [x] 4.3 ImageService 実装（画像リサイズ）
@@ -39,51 +29,33 @@
 - [x] 4.6 KeyboardService 実装
 - [x] 4.7 ショートカット（Ctrl/Cmd + D）
 
----
-
 ## Phase 5: ページ並べ替え
-
 - [x] 5.1 サイドバーでのドラッグ並べ替え
 - [x] 5.2 並べ替えアニメーション
 
----
-
 ## Phase 6: PDF出力
-
 - [x] 6.1 pdf-lib でPDF生成
 - [x] 6.2 ダウンロード機能
 - [ ] 6.3 ファイル名入力ダイアログ（任意）
 
----
-
 ## Phase 7: 仕上げ
-
 - [x] 7.1 ローディングインジケーター
 - [x] 7.2 エラーハンドリング・トースト通知
 - [x] 7.3 レスポンシブ対応
 - [x] 7.4 README.md 作成
 
----
-
 ## Phase 8: 追加機能 (Export & UX)
-
 - [x] 8.1 画像エクスポート機能 (PNG/ZIP)
 - [x] 8.2 初回プレビュー画像反転バグ修正
 - [x] 8.3 ファイル読み込みUX改善 (Empty Stateボタン & メインビューD&D)
 
----
-
 ## Phase 9: バイナリ分割機能
-
 - [x] 9.1 PDFServiceに`splitBinary`/`splitBinaryAsZip`メソッド追加
 - [x] 9.2 ツールバーに「分割」ボタン追加
 - [x] 9.3 main.tsに`splitAndDownload`メソッド追加
 - [x] 9.4 ドキュメント更新
 
----
-
 ## Phase 10: 注釈・編集機能（完了）
-
 - [x] 10.1 ページ回転機能 (90度)
 - [x] 10.2 ページ複製・全削除（クリア）機能
 - [x] 10.3 テキスト注釈（ドラッグ配置）
@@ -92,50 +64,22 @@
 - [x] 10.6 画像Undo対応
 - [x] 10.7 UX修正（トースト非表示・色選択ラベル）
 
----
-
-## 進捗サマリー
-
-| Phase | 状態 | 完了タスク |
-|-------|------|-----------|
-| 1. プロジェクト初期化 | ✅ 完了 | 4/4 |
-| 2. 基盤UI構築 | ✅ 完了 | 4/4 |
-| 3. PDF読み込み・表示 | ✅ 完了 | 6/6 |
-| 4. ページ操作機能 | ✅ 完了 | 7/7 |
-| 5. ページ並べ替え | ✅ 完了 | 2/2 |
-| 6. PDF出力 | ✅ 完了 | 2/3 |
-| 7. 仕上げ | ✅ 完了 | 4/5 |
-| 8. 追加機能 (Export & UX) | ✅ 完了 | 3/3 |
-| 9. バイナリ分割機能 | ✅ 完了 | 4/4 |
-| 10. 注釈・編集機能 | ✅ 完了 | 7/7 |
-| 11. リファクタリング | ✅ 完了 | 3/3 |
-| 11.5 Undo & UX改善 | ✅ 完了 | 3/3 |
-| 12. ズーム機能 | ✅ 完了 | 3/3 |
-| 13. Redo機能 | ✅ 完了 | 4/4 |
-| **合計** | **✅ 完了** | **56/58** |
-
----
-
 ## Phase 11: リファクタリング (構造改善)
-
 - [x] 11.1 UndoManagerの分離 (Undo/Redoロジック)
 - [x] 11.2 AnnotationManagerの分離 (注釈描画・ヒット判定)
 - [x] 11.3 座標変換ロジックの共通化
 
 ## Phase 11.5: UX & Undo改善 (追加要望)
-
 - [x] 11.5.1 複製機能のUndo対応
 - [x] 11.5.2 テキスト移動のUndo対応（移動前の位置に戻す）
 - [x] 11.5.3 マーカーモードの自動解除（他機能使用時）
 
 ## Phase 12: ズーム機能
-
 - [x] 12.1 ズームUI実装 (ツールバー)
 - [x] 12.2 ズームロジック実装 (プレビュースケール変更)
 - [x] 12.3 レンダリング最適化 (競合防止)
 
 ## Phase 13: Redo (やり直し) 機能
-
 - [x] 13.1 UndoActionの拡張 (Redo情報の保持)
 - [x] 13.2 Redoロジック実装 (UndoManager, PDFEditorApp)
 - [x] 13.3 ショートカット実装 (Ctrl+Y, Ctrl+Shift+Z)
@@ -143,35 +87,40 @@
 - [x] 13.5 UI操作の統合
 
 ## Phase 14: 注釈の高度な編集
- 
 - [x] 14.1 注釈の選択機能（クリックで選択枠表示）
 - [x] 14.2 選択した注釈の個別削除 (Deleteキー)
 - [x] 14.3 注釈の移動 (ドラッグ)
-- [x] 14.4 注釈のリサイズ (ハンドル操作) - ※今回はフォントサイズ変更のみ対応
+- [x] 14.4 注釈のリサイズ (ハンドル操作)
 - [x] 14.5 注釈・ページのコピー＆ペースト (`Ctrl+C`, `Ctrl+V`)
 
 ## Phase 15: 改善・機能追加 (User Requests)
+- [x] 15.1 複数画像の選択・一括追加
+- [x] 15.2 UIリファクタリング (ツールバーのグループ化・整理)
 
-- [ ] 15.1 複数画像の選択・一括追加
-- [ ] 15.2 UIリファクタリング (ツールバーのグループ化・整理)
+## Phase 16: 大規模リファクタリング
+- [x] 16.1 EventManagerの分離
+- [x] 16.1.1 Drag & Dropの修正 (プレビューエリアでのドロップ無効化バグ)
+- [x] 26.2 ToolbarManagerの分離
+- [x] 26.2.1 ページ「下へ移動」ボタンの修正（バグ修正）
+- [x] 26.2.2 マーカー注釈のリサイズ対応
+- [x] 26.3 RenderManagerの分離
 
----
+## Phase 17: ヘルプ機能 (User UX)
+- [ ] 17.1 ショートカット一覧モーダルの実装
+- [ ] 17.2 ヘルプボタンの追加
 
-## バグ修正履歴
+## Phase 18: PWA対応
+- [ ] 18.1 Service Workerの設定
+- [ ] 18.2 マニフェストファイルの作成
 
-- [x] PDFプレビューが表示されない問題を修正（ArrayBuffer detachment）
-- [x] 画像挿入時のサイズ調整（ページサイズに合わせてスケーリング）
-- [x] PDFが重複して読み込まれる問題を修正
-
----
-
-## コード簡素化履歴
-
-- [x] Worker設定の一元化 (main.ts → PDFService.ts)
-- [x] キーボードショートカット共通化 (`addCrossOsShortcut`)
-- [x] テーマアイコン更新共通化 (`updateThemeIcons`)
-- [x] ページ移動処理統合 (`movePage`)
-- [x] 画像フィット処理共通化 (`drawImageFitToCanvas`)
+## Phase 29: Performance Optimization (Current)
+- [x] 29.1 Optimize Highlight Dragging
+    - [x] Reduce lag during highlight movement (similar to text)
+    - [x] Optimize `handleCanvasMouseMove` in `main.ts` / `RenderManager` (via `redrawWithCachedBackground` optimization)
+- [x] 29.2 Page Rendering Cache
+    - [x] Implement page cache in `RenderManager` (Map<pageId+params, ImageBitmap>)
+    - [x] Skip PDF.js rendering if cached image exists
+    - [x] Invalidate cache on zoom/rotation change (auto via key)
 
 ## Phase 24: パフォーマンス改善 & UX向上
 - [x] 24.1 オフスクリーンキャンバスによるレンダリング高速化
@@ -182,4 +131,3 @@
 - [x] 25.1 リサイズハンドルの実装
 - [x] 25.2 フォントサイズの動的変更
 - [x] 25.3 Undo/Redo対応
-
