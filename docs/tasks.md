@@ -143,25 +143,6 @@
 - [x] 23.4 PDFEditorAppの簡素化 (main.tsのダイエット)
 - [x] 23.5 画像フィット処理共通化 (`drawImageFitToCanvas`)
 
-## Phase 26: 大規模リファクタリング (Event/Toolbar/Render)
-
-## Phase 17: ヘルプ機能 (User UX)
-- [ ] 17.1 ショートカット一覧モーダルの実装
-- [ ] 17.2 ヘルプボタンの追加
-
-## Phase 18: PWA対応
-- [ ] 18.1 Service Workerの設定
-- [ ] 18.2 マニフェストファイルの作成
-
-## Phase 29: Performance Optimization (Current)
-- [x] 29.1 Optimize Highlight Dragging
-    - [x] Reduce lag during highlight movement (similar to text)
-    - [x] Optimize `handleCanvasMouseMove` in `main.ts` / `RenderManager` (via `redrawWithCachedBackground` optimization)
-- [x] 29.2 Page Rendering Cache
-    - [x] Implement page cache in `RenderManager` (Map<pageId+params, ImageBitmap>)
-    - [x] Skip PDF.js rendering if cached image exists
-    - [x] Invalidate cache on zoom/rotation change (auto via key)
-
 ## Phase 24: パフォーマンス改善 & UX向上
 - [x] 24.1 オフスクリーンキャンバスによるレンダリング高速化
 - [x] 24.2 スマートキャッシングの実装
@@ -171,3 +152,28 @@
 - [x] 25.1 リサイズハンドルの実装
 - [x] 25.2 フォントサイズの動的変更
 - [x] 25.3 Undo/Redo対応
+
+## Phase 26: 大規模リファクタリング (Event/Toolbar/Render)
+- [x] 26.1 EventManagerの分離
+- [x] 26.1.1 Drag & Dropの修正 (プレビューエリアでのドロップ無効化バグ)
+- [x] 26.2 ToolbarManagerの分離
+- [x] 26.2.1 ページ「下へ移動」ボタンの修正（バグ修正）
+- [x] 26.2.2 マーカー注釈のリサイズ対応
+- [x] 26.3 RenderManagerの分離
+
+## Phase 29: Performance Optimization
+- [x] 29.1 Optimize Highlight Dragging
+    - [x] Reduce lag during highlight movement (similar to text)
+    - [x] Optimize `handleCanvasMouseMove` in `main.ts` / `RenderManager` (via `redrawWithCachedBackground` optimization)
+- [x] 29.2 Page Rendering Cache
+    - [x] Implement page cache in `RenderManager` (Map<pageId+params, ImageBitmap>)
+    - [x] Skip PDF.js rendering if cached image exists
+    - [x] Invalidate cache on zoom/rotation change (auto via key)
+
+## Phase 30: ヘルプ機能 (User UX)
+- [ ] 30.1 ショートカット一覧モーダルの実装
+- [ ] 30.2 ヘルプボタンの追加
+
+## Phase 31: PWA対応
+- [ ] 31.1 Service Workerの設定
+- [ ] 31.2 マニフェストファイルの作成
