@@ -17,6 +17,7 @@ class PDFEditorApp {
     private state: AppState = {
         pages: [],
         selectedPageIndex: -1,
+        selectedPageIndices: [],
         isLoading: false,
         isDarkMode: false,
         originalPdfBytes: null,
@@ -259,13 +260,30 @@ class PDFEditorApp {
         }
     }
 
-    private selectPage(index: number): void {
+    private selectPage(index: number, multiSelect: boolean = false): void {
         if (index < 0 || index >= this.state.pages.length) return;
 
         // ページ切り替え時に選択解除
         this.selectedAnnotationId = null;
 
-        this.state.selectedPageIndex = index;
+        if (multiSelect) {
+            // Ctrl+クリック: トグル選択
+            const idx = this.state.selectedPageIndices.indexOf(index);
+            if (idx >= 0) {
+                this.state.selectedPageIndices.splice(idx, 1);
+            } else {
+                this.state.selectedPageIndices.push(index);
+            }
+            // メインビューは最後に選択したページを表示
+            if (this.state.selectedPageIndices.length > 0) {
+                this.state.selectedPageIndex = this.state.selectedPageIndices[this.state.selectedPageIndices.length - 1];
+            }
+        } else {
+            // 通常クリック: 単一選択
+            this.state.selectedPageIndex = index;
+            this.state.selectedPageIndices = [index];
+        }
+
         this.updateThumbnailSelection();
         this.updateMainView();
         this.updatePageNav();
@@ -294,6 +312,7 @@ class PDFEditorApp {
         btnOpen: HTMLButtonElement;
         btnOpenHero: HTMLButtonElement; // 追加
         btnSave: HTMLButtonElement;
+        btnSaveAs: HTMLButtonElement;
         btnSplit: HTMLButtonElement;
         btnClear: HTMLButtonElement;
         btnAddImage: HTMLButtonElement;
@@ -363,6 +382,44 @@ class PDFEditorApp {
         // キーボードショートカット
         this.setupKeyboardShortcuts();
         this.loadThemePreference();
+
+        // ドロップダウンメニュー初期化
+        this.setupDropdownMenus();
+    }
+
+    private setupDropdownMenus(): void {
+        const fileMenuBtn = document.getElementById('btn-file-menu');
+        const fileMenu = document.getElementById('file-menu');
+        const exportMenuBtn = document.getElementById('btn-export-menu');
+        const exportMenu = document.getElementById('export-menu');
+
+        // ファイルメニュー
+        fileMenuBtn?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            fileMenu?.classList.toggle('show');
+            exportMenu?.classList.remove('show');
+        });
+
+        // エクスポートメニュー
+        exportMenuBtn?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            exportMenu?.classList.toggle('show');
+            fileMenu?.classList.remove('show');
+        });
+
+        // 外部クリックで閉じる
+        document.addEventListener('click', () => {
+            fileMenu?.classList.remove('show');
+            exportMenu?.classList.remove('show');
+        });
+
+        // ドロップダウン内クリックでも閉じる（アイテム選択後）
+        fileMenu?.addEventListener('click', () => {
+            fileMenu?.classList.remove('show');
+        });
+        exportMenu?.addEventListener('click', () => {
+            exportMenu?.classList.remove('show');
+        });
     }
 
     private cacheElements(): void {
@@ -373,6 +430,7 @@ class PDFEditorApp {
             imageInput.type = 'file';
             imageInput.id = 'image-input';
             imageInput.accept = '.png,.jpg,.jpeg';
+            imageInput.multiple = true;
             imageInput.style.display = 'none';
             document.body.appendChild(imageInput);
         }
@@ -381,6 +439,7 @@ class PDFEditorApp {
             btnOpen: document.getElementById('btn-open') as HTMLButtonElement,
             btnOpenHero: document.getElementById('btn-open-hero') as HTMLButtonElement, // 追加
             btnSave: document.getElementById('btn-save') as HTMLButtonElement,
+            btnSaveAs: document.getElementById('btn-save-as') as HTMLButtonElement,
             btnSplit: document.getElementById('btn-split') as HTMLButtonElement,
             btnClear: document.getElementById('btn-clear') as HTMLButtonElement,
             btnAddImage: document.getElementById('btn-add-image') as HTMLButtonElement,
@@ -456,15 +515,22 @@ class PDFEditorApp {
             this.savePDF();
         });
 
+        // 名前を付けて保存
+        this.elements.btnSaveAs.addEventListener('click', () => {
+            this.saveAsPDF();
+        });
+
         // 画像追加
         this.elements.btnAddImage.addEventListener('click', () => {
             this.elements.imageInput.click();
         });
 
         this.elements.imageInput.addEventListener('change', async (e) => {
-            const file = (e.target as HTMLInputElement).files?.[0];
-            if (file) {
-                await this.insertImage(file);
+            const files = (e.target as HTMLInputElement).files;
+            if (files && files.length > 0) {
+                for (const file of Array.from(files)) {
+                    await this.insertImage(file);
+                }
             }
             // リセット（同じファイルを再選択可能に）
             (e.target as HTMLInputElement).value = '';
@@ -705,37 +771,43 @@ class PDFEditorApp {
     }
 
     private deleteSelectedPage(): void {
-        if (this.state.selectedPageIndex < 0 || this.state.pages.length === 0) {
+        const selectedIndices = [...this.state.selectedPageIndices].sort((a, b) => b - a); // 降順
+
+        if (selectedIndices.length === 0 || this.state.pages.length === 0) {
             return;
         }
 
-        const confirmed = confirm(
-            `ページ ${this.state.selectedPageIndex + 1} を削除しますか？`
-        );
+        const message = selectedIndices.length === 1
+            ? `ページ ${selectedIndices[0] + 1} を削除しますか？`
+            : `${selectedIndices.length}ページを削除しますか？`;
+        const confirmed = confirm(message);
 
         if (!confirmed) return;
 
-        // Undoのために削除前の状態を保存
-        const deletedPage = this.state.pages[this.state.selectedPageIndex];
-        const deletedIndex = this.state.selectedPageIndex;
-        this.pushUndo({ type: 'deletePage', page: deletedPage, index: deletedIndex });
+        // Undo用に削除対象を保存（降順で）
+        const deletedPages: { page: PageData; index: number }[] = [];
+        for (const index of selectedIndices) {
+            deletedPages.push({ page: this.state.pages[index], index });
+            this.state.pages.splice(index, 1);
+        }
 
-        this.state.pages = this.pdfService.removePageAt(
-            this.state.pages,
-            this.state.selectedPageIndex
-        );
+        // バッチ削除としてUndo履歴に追加
+        this.pushUndo({ type: 'batchDelete', deletedPages });
 
-        // 選択インデックスを調整
+        // 選択をリセット
+        this.state.selectedPageIndices = [];
         if (this.state.pages.length === 0) {
             this.state.selectedPageIndex = -1;
-        } else if (this.state.selectedPageIndex >= this.state.pages.length) {
-            this.state.selectedPageIndex = this.state.pages.length - 1;
+        } else {
+            this.state.selectedPageIndex = Math.min(selectedIndices[selectedIndices.length - 1], this.state.pages.length - 1);
+            this.state.selectedPageIndices = [this.state.selectedPageIndex];
         }
 
         this.renderPageList();
         this.updateMainView();
         this.updateUI();
-        this.showToast('ページを削除しました', 'success');
+        const msg = selectedIndices.length === 1 ? 'ページを削除しました' : `${selectedIndices.length}ページを削除しました`;
+        this.showToast(msg, 'success');
     }
 
     private movePage(direction: 'up' | 'down'): void {
@@ -770,51 +842,61 @@ class PDFEditorApp {
 
 
     private rotatePage(): void {
-        if (this.state.selectedPageIndex < 0 || this.state.pages.length === 0) return;
+        const selectedIndices = this.state.selectedPageIndices;
+        if (selectedIndices.length === 0 || this.state.pages.length === 0) return;
 
-        const page = this.state.pages[this.state.selectedPageIndex];
-        const currentRotation = page.rotation || 0;
+        const pageIds: string[] = [];
+        const previousRotations: number[] = [];
 
-        // Undoのために回転前の状態を保存
-        this.pushUndo({ type: 'rotatePage', pageId: page.id, previousRotation: currentRotation });
+        for (const idx of selectedIndices) {
+            const page = this.state.pages[idx];
+            pageIds.push(page.id);
+            previousRotations.push(page.rotation || 0);
+            page.rotation = ((page.rotation || 0) + 90) % 360;
+        }
 
-        page.rotation = (currentRotation + 90) % 360;
+        // Undo履歴
+        this.pushUndo({ type: 'batchRotate', pageIds, previousRotations });
 
         this.renderPageList();
         this.updateMainView();
-        this.showToast(`ページを90°回転しました`, 'success');
+        const msg = selectedIndices.length === 1 ? 'ページを90°回転しました' : `${selectedIndices.length}ページを回転しました`;
+        this.showToast(msg, 'success');
     }
 
     private duplicatePage(): void {
-        if (this.state.selectedPageIndex < 0 || this.state.pages.length === 0) return;
+        const selectedIndices = [...this.state.selectedPageIndices].sort((a, b) => a - b);
+        if (selectedIndices.length === 0 || this.state.pages.length === 0) return;
 
-        const originalPage = this.state.pages[this.state.selectedPageIndex];
-        // ディープコピーを作成
-        const duplicatedPage: PageData = {
-            ...originalPage,
-            id: crypto.randomUUID(),
-        };
+        const addedPages: { page: PageData; index: number }[] = [];
 
-        // 選択ページの次に挿入
-        this.state.pages = this.pdfService.insertPageAt(
-            this.state.pages,
-            duplicatedPage,
-            this.state.selectedPageIndex + 1
-        );
-        this.state.selectedPageIndex = this.state.selectedPageIndex + 1;
+        // 昇順で複製し、元ページの直後に挿入
+        let offset = 0;
+        for (const originalIndex of selectedIndices) {
+            const originalPage = this.state.pages[originalIndex + offset];
+            const duplicatedPage: PageData = {
+                ...originalPage,
+                id: crypto.randomUUID(),
+            };
+            const insertIndex = originalIndex + offset + 1;
+            this.state.pages.splice(insertIndex, 0, duplicatedPage);
+            addedPages.push({ page: duplicatedPage, index: insertIndex });
+            offset++;
+        }
 
-        // Undoのために複製したページを保存
-        this.pushUndo({
-            type: 'duplicatePage',
-            pageId: duplicatedPage.id,
-            index: this.state.selectedPageIndex
-        });
+        // Undo履歴
+        this.pushUndo({ type: 'batchDuplicate', addedPages });
+
+        // 選択を複製されたページに更新
+        this.state.selectedPageIndices = addedPages.map(ap => ap.index);
+        this.state.selectedPageIndex = addedPages[addedPages.length - 1].index;
 
         this.renderPageList();
         this.updateMainView();
         this.updatePageNav();
         this.updateUI();
-        this.showToast('ページを複製しました', 'success');
+        const msg = selectedIndices.length === 1 ? 'ページを複製しました' : `${selectedIndices.length}ページを複製しました`;
+        this.showToast(msg, 'success');
     }
 
     private renderPageList(): void {
@@ -831,7 +913,8 @@ class PDFEditorApp {
         container.className = 'page-thumbnail';
         container.dataset.index = String(index);
 
-        if (index === this.state.selectedPageIndex) {
+        // 選択状態の確認（複数選択対応）
+        if (this.state.selectedPageIndices.includes(index)) {
             container.classList.add('selected');
         }
 
@@ -851,15 +934,21 @@ class PDFEditorApp {
         pageNumber.textContent = String(index + 1);
         container.appendChild(pageNumber);
 
-        // クリックイベント
-        container.addEventListener('click', () => {
-            this.selectPage(index);
+        // クリックイベント（Ctrl+クリック対応）
+        container.addEventListener('click', (e) => {
+            this.selectPage(index, e.ctrlKey || e.metaKey);
         });
 
-        // ドラッグ並べ替え
+        // ドラッグ並べ替え（複数ページ対応）
         container.draggable = true;
         container.addEventListener('dragstart', (e) => {
-            e.dataTransfer!.setData('text/plain', String(index));
+            // 複数選択中なら選択されたページ全体をドラッグ
+            const indicesToDrag = this.state.selectedPageIndices.includes(index)
+                ? [...this.state.selectedPageIndices].sort((a, b) => a - b)
+                : [index];
+            // text/plainでJSON文字列を渡す（ブラウザ互換性のため）
+            e.dataTransfer!.setData('text/plain', JSON.stringify(indicesToDrag));
+            e.dataTransfer!.effectAllowed = 'move';
             container.style.opacity = '0.5';
         });
 
@@ -869,6 +958,7 @@ class PDFEditorApp {
 
         container.addEventListener('dragover', (e) => {
             e.preventDefault();
+            e.dataTransfer!.dropEffect = 'move';
             const rect = container.getBoundingClientRect();
             const midY = rect.top + rect.height / 2;
 
@@ -888,36 +978,61 @@ class PDFEditorApp {
             e.preventDefault();
             container.classList.remove('drag-over-above', 'drag-over-below');
 
-            const fromIndex = parseInt(e.dataTransfer!.getData('text/plain'), 10);
-            if (isNaN(fromIndex)) return;
+            let fromIndices: number[];
+            const data = e.dataTransfer!.getData('text/plain');
+            try {
+                fromIndices = JSON.parse(data);
+                if (!Array.isArray(fromIndices)) {
+                    fromIndices = [parseInt(data, 10)];
+                }
+            } catch {
+                const singleIndex = parseInt(data, 10);
+                if (isNaN(singleIndex)) return;
+                fromIndices = [singleIndex];
+            }
 
             const rect = container.getBoundingClientRect();
             const midY = rect.top + rect.height / 2;
-            let toIndex = index;
+            let toIndex = e.clientY < midY ? index : index + 1;
 
-            if (e.clientY > midY) {
-                toIndex = index + 1;
-            }
-
-            if (fromIndex !== toIndex && fromIndex !== toIndex - 1) {
-                this.reorderPage(fromIndex, toIndex > fromIndex ? toIndex - 1 : toIndex);
-            }
+            this.reorderPages(fromIndices, toIndex);
         });
 
         return container;
     }
 
-    private reorderPage(fromIndex: number, toIndex: number): void {
-        this.state.pages = this.pdfService.reorderPages(
-            this.state.pages,
-            fromIndex,
-            toIndex
-        );
+    private reorderPages(fromIndices: number[], toIndex: number): void {
+        // ドラッグ元がドロップ先と同じ、または移動なしならスキップ
+        if (fromIndices.length === 0) return;
+        if (fromIndices.length === 1 && (fromIndices[0] === toIndex || fromIndices[0] === toIndex - 1)) return;
 
-        // 選択を維持
-        if (this.state.selectedPageIndex === fromIndex) {
-            this.state.selectedPageIndex = toIndex;
+        // 移動前のページID（Undo用）
+        const movedPageIds = fromIndices.map(i => this.state.pages[i].id);
+
+        // ページを抽出（降順で元配列から削除）
+        const sortedFromIndices = [...fromIndices].sort((a, b) => b - a);
+        const pagesToMove: typeof this.state.pages = [];
+        for (const idx of sortedFromIndices) {
+            pagesToMove.unshift(this.state.pages[idx]);
+            this.state.pages.splice(idx, 1);
         }
+
+        // 削除後の挿入位置を調整
+        let adjustedToIndex = toIndex;
+        for (const idx of fromIndices) {
+            if (idx < toIndex) adjustedToIndex--;
+        }
+        adjustedToIndex = Math.max(0, Math.min(adjustedToIndex, this.state.pages.length));
+
+        // 挿入
+        this.state.pages.splice(adjustedToIndex, 0, ...pagesToMove);
+
+        // Undo履歴
+        this.pushUndo({ type: 'batchMove', fromIndices, toIndex, movedPageIds });
+
+        // 選択を移動後の位置に更新
+        this.state.selectedPageIndices = pagesToMove.map((_, i) => adjustedToIndex + i);
+        this.state.selectedPageIndex = adjustedToIndex;
 
         this.renderPageList();
         this.updateMainView();
@@ -927,7 +1042,7 @@ class PDFEditorApp {
     private updateThumbnailSelection(): void {
         const thumbnails = this.elements.pageList.querySelectorAll('.page-thumbnail');
         thumbnails.forEach((thumb, index) => {
-            thumb.classList.toggle('selected', index === this.state.selectedPageIndex);
+            thumb.classList.toggle('selected', this.state.selectedPageIndices.includes(index));
         });
     }
 
@@ -1022,6 +1137,7 @@ class PDFEditorApp {
         const selectedIndex = this.state.selectedPageIndex;
 
         this.elements.btnSave.disabled = !hasPages;
+        this.elements.btnSaveAs.disabled = !hasPages;
         this.elements.btnSplit.disabled = !hasPages;
         this.elements.btnMoveUp.disabled = !hasPages || selectedIndex <= 0;
         this.elements.btnMoveDown.disabled = !hasPages || selectedIndex >= this.state.pages.length - 1;
@@ -1632,6 +1748,80 @@ class PDFEditorApp {
                 }
                 break;
             }
+
+            // バッチ操作
+            case 'batchMove': {
+                // batchMoveのUndo: 移動したページを元の位置に戻す
+                // movedPageIdsを探して現位置を取得し、元のfromIndicesに戻す
+                const currentIndices = action.movedPageIds.map(id =>
+                    this.state.pages.findIndex(p => p.id === id)
+                ).filter(i => i >= 0);
+
+                if (currentIndices.length > 0) {
+                    // 逆操作: 現在位置から元の位置へ
+                    const sortedCurrent = [...currentIndices].sort((a, b) => b - a);
+                    const pagesToRevert: typeof this.state.pages = [];
+                    for (const idx of sortedCurrent) {
+                        pagesToRevert.unshift(this.state.pages[idx]);
+                        this.state.pages.splice(idx, 1);
+                    }
+                    // 元のfromIndicesに挿入（昇順で）
+                    const sortedFrom = [...action.fromIndices].sort((a, b) => a - b);
+                    for (let i = 0; i < sortedFrom.length; i++) {
+                        this.state.pages.splice(sortedFrom[i], 0, pagesToRevert[i]);
+                    }
+                    this.state.selectedPageIndices = [...action.fromIndices];
+                    this.state.selectedPageIndex = action.fromIndices[0];
+                    this.renderPageList();
+                }
+                break;
+            }
+
+            case 'batchRotate': {
+                // 各ページを元の回転角に戻す
+                for (let i = 0; i < action.pageIds.length; i++) {
+                    const page = this.state.pages.find(p => p.id === action.pageIds[i]);
+                    if (page) {
+                        page.rotation = action.previousRotations[i];
+                    }
+                }
+                this.renderPageList();
+                break;
+            }
+
+            case 'batchDuplicate': {
+                // 追加されたページを降順で削除
+                const sortedIndices = [...action.addedPages]
+                    .sort((a, b) => b.index - a.index)
+                    .map(ap => this.state.pages.findIndex(p => p.id === ap.page.id))
+                    .filter(i => i >= 0);
+                for (const idx of sortedIndices) {
+                    this.state.pages.splice(idx, 1);
+                }
+                // 選択を調整
+                if (this.state.pages.length > 0) {
+                    this.state.selectedPageIndex = Math.min(this.state.selectedPageIndex, this.state.pages.length - 1);
+                    this.state.selectedPageIndices = [this.state.selectedPageIndex];
+                } else {
+                    this.state.selectedPageIndex = -1;
+                    this.state.selectedPageIndices = [];
+                }
+                this.renderPageList();
+                break;
+            }
+
+            case 'batchDelete': {
+                // 削除されたページを元の位置に復元（昇順で）
+                const sorted = [...action.deletedPages].sort((a, b) => a.index - b.index);
+                for (const { page, index } of sorted) {
+                    this.state.pages.splice(index, 0, page);
+                }
+                // 選択を復元
+                this.state.selectedPageIndices = sorted.map(s => s.index);
+                this.state.selectedPageIndex = sorted[0].index;
+                this.renderPageList();
+                break;
+            }
         }
 
         // 再描画
@@ -1829,6 +2019,60 @@ class PDFEditorApp {
                 }
                 break;
             }
+
+            // バッチ操作のRedo
+            case 'batchMove': {
+                // 再度移動を実行
+                this.reorderPages(action.fromIndices, action.toIndex);
+                // ただしpushUndoは不要なので、undoManagerから最後のアクションを削除
+                this.undoManager.popUndo();
+                break;
+            }
+
+            case 'batchRotate': {
+                // 再度+90度回転
+                for (const pageId of action.pageIds) {
+                    const page = this.state.pages.find(p => p.id === pageId);
+                    if (page) {
+                        page.rotation = ((page.rotation || 0) + 90) % 360;
+                    }
+                }
+                this.renderPageList();
+                this.updateMainView();
+                break;
+            }
+
+            case 'batchDuplicate': {
+                // 再度複製を挿入（インデックス昇順で）
+                const sorted = [...action.addedPages].sort((a, b) => a.index - b.index);
+                for (const { page, index } of sorted) {
+                    const newPage = { ...page, id: crypto.randomUUID() };
+                    this.state.pages.splice(index, 0, newPage);
+                }
+                this.renderPageList();
+                this.updateMainView();
+                break;
+            }
+
+            case 'batchDelete': {
+                // 再度削除（降順で）
+                const sorted = [...action.deletedPages].sort((a, b) => b.index - a.index);
+                for (const { index } of sorted) {
+                    if (index < this.state.pages.length) {
+                        this.state.pages.splice(index, 1);
+                    }
+                }
+                if (this.state.pages.length === 0) {
+                    this.state.selectedPageIndex = -1;
+                    this.state.selectedPageIndices = [];
+                } else {
+                    this.state.selectedPageIndex = Math.min(this.state.selectedPageIndex, this.state.pages.length - 1);
+                    this.state.selectedPageIndices = [this.state.selectedPageIndex];
+                }
+                this.renderPageList();
+                this.updateMainView();
+                break;
+            }
         }
     }
 
@@ -1885,7 +2129,7 @@ class PDFEditorApp {
             }
 
             const pdfBytes = await pdfDoc.save();
-            this.downloadPDF(pdfBytes);
+            this.downloadPDF(pdfBytes, 'edited.pdf');
             this.showToast('PDFを保存しました', 'success');
         } catch (error) {
             console.error('Save PDF error:', error);
@@ -1973,15 +2217,80 @@ class PDFEditorApp {
         this.hideLoading();
     }
 
-    private downloadPDF(pdfBytes: Uint8Array): void {
+    private downloadPDF(pdfBytes: Uint8Array, fileName: string = 'edited.pdf'): void {
         const arrayBuffer = pdfBytes.buffer.slice(pdfBytes.byteOffset, pdfBytes.byteOffset + pdfBytes.byteLength) as ArrayBuffer;
         const blob = new Blob([arrayBuffer], { type: 'application/pdf' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = 'edited.pdf';
+        a.download = fileName;
         a.click();
         URL.revokeObjectURL(url);
+    }
+
+    private async saveAsPDF(): Promise<void> {
+        if (this.state.pages.length === 0) return;
+
+        const fileName = prompt('ファイル名を入力してください:', 'document.pdf');
+        if (!fileName) return; // キャンセル
+
+        // .pdf拡張子を確保
+        const finalName = fileName.endsWith('.pdf') ? fileName : `${fileName}.pdf`;
+
+        this.showLoading('PDFを生成中...');
+
+        try {
+            const pdfDoc = await PDFDocument.create();
+
+            for (const page of this.state.pages) {
+                let pdfPage;
+                if (page.type === 'image') {
+                    pdfPage = await this.imageService.embedImageToPdf(pdfDoc, page);
+                    if (page.rotation && pdfPage) {
+                        pdfPage.setRotation(degrees(page.rotation));
+                    }
+                } else if (page.pdfBytes && page.originalPageIndex !== undefined) {
+                    const srcDoc = await PDFDocument.load(page.pdfBytes);
+                    const [copiedPage] = await pdfDoc.copyPages(srcDoc, [
+                        page.originalPageIndex,
+                    ]);
+                    if (page.rotation) {
+                        const currentRotation = copiedPage.getRotation().angle;
+                        copiedPage.setRotation(degrees(currentRotation + page.rotation));
+                    }
+                    pdfDoc.addPage(copiedPage);
+                    pdfPage = copiedPage;
+                }
+
+                // テキスト注釈を埋め込む
+                if (pdfPage && page.textAnnotations && page.textAnnotations.length > 0) {
+                    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+                    for (const annotation of page.textAnnotations) {
+                        const hex = annotation.color.replace('#', '');
+                        const r = parseInt(hex.substring(0, 2), 16) / 255;
+                        const g = parseInt(hex.substring(2, 4), 16) / 255;
+                        const b = parseInt(hex.substring(4, 6), 16) / 255;
+
+                        pdfPage.drawText(annotation.text, {
+                            x: annotation.x,
+                            y: annotation.y,
+                            size: annotation.fontSize,
+                            font,
+                            color: rgb(r, g, b),
+                        });
+                    }
+                }
+            }
+
+            const pdfBytes = await pdfDoc.save();
+            this.downloadPDF(pdfBytes, finalName);
+            this.showToast(`「${finalName}」を保存しました`, 'success');
+        } catch (error) {
+            console.error('Save PDF error:', error);
+            this.showToast('PDFの保存に失敗しました', 'error');
+        }
+
+        this.hideLoading();
     }
 
     private updateThemeIcons(): void {

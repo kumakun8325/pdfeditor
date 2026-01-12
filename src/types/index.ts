@@ -78,8 +78,10 @@ export interface PageData {
 export interface AppState {
     /** ページ情報一覧 */
     pages: PageData[];
-    /** 選択中のページインデックス */
+    /** 選択中のページインデックス（メインビュー表示用） */
     selectedPageIndex: number;
+    /** 複数選択中のページインデックス */
+    selectedPageIndices: number[];
     /** ローディング状態 */
     isLoading: boolean;
     /** ダークモード状態 */
@@ -128,4 +130,9 @@ export type UndoAction =
     | { type: 'moveHighlight'; pageId: string; annotationId: string; fromX: number; fromY: number; toX: number; toY: number }
     | { type: 'deleteText'; pageId: string; annotationId: string; annotation: TextAnnotation }
     | { type: 'deleteHighlight'; pageId: string; annotationId: string; annotation: HighlightAnnotation }
-    | { type: 'updateText'; pageId: string; annotationId: string; oldText: string; newText: string; oldColor: string; newColor: string; oldFontSize: number; newFontSize: number };
+    | { type: 'updateText'; pageId: string; annotationId: string; oldText: string; newText: string; oldColor: string; newColor: string; oldFontSize: number; newFontSize: number }
+    // バッチ操作
+    | { type: 'batchMove'; fromIndices: number[]; toIndex: number; movedPageIds: string[] }
+    | { type: 'batchRotate'; pageIds: string[]; previousRotations: number[] }
+    | { type: 'batchDuplicate'; addedPages: { page: PageData; index: number }[] }
+    | { type: 'batchDelete'; deletedPages: { page: PageData; index: number }[] };
