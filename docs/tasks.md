@@ -161,19 +161,19 @@
 - [x] 26.2.2 マーカー注釈のリサイズ対応
 - [x] 26.3 RenderManagerの分離
 
-## Phase 29: Performance Optimization
-- [x] 29.1 Optimize Highlight Dragging
-    - [x] Reduce lag during highlight movement (similar to text)
-    - [x] Optimize `handleCanvasMouseMove` in `main.ts` / `RenderManager` (via `redrawWithCachedBackground` optimization)
-- [x] 29.2 Page Rendering Cache
-    - [x] Implement page cache in `RenderManager` (Map<pageId+params, ImageBitmap>)
-    - [x] Skip PDF.js rendering if cached image exists
-    - [x] Invalidate cache on zoom/rotation change (auto via key)
+## Phase 27: パフォーマンス最適化
+- [x] 27.1 ハイライト注釈のドラッグ最適化
+    - [x] 注釈移動時のラグ軽減（テキスト同様のスムーズさ）
+    - [x] `main.ts` / `RenderManager` の `handleCanvasMouseMove` 最適化 (`redrawWithCachedBackground` の高速化)
+- [x] 27.2 ページレンダリングキャッシュ
+    - [x] `RenderManager` にページキャッシュ実装 (Map<pageId+params, ImageBitmap>)
+    - [x] キャッシュ済み画像の再利用（PDF.jsレンダリングスキップ）
+    - [x] ズーム・回転変更時のキャッシュ無効化（キーによる自動制御）
 
-## Phase 30: ヘルプ機能 (User UX)
-- [ ] 30.1 ショートカット一覧モーダルの実装
-- [ ] 30.2 ヘルプボタンの追加
+## Phase 28: ヘルプ機能 (User UX)
+- [ ] 28.1 ショートカット一覧モーダルの実装
+- [ ] 28.2 ヘルプボタンの追加
 
-## Phase 31: PWA対応
-- [ ] 31.1 Service Workerの設定
-- [ ] 31.2 マニフェストファイルの作成
+## Phase 29: PWA対応
+- [ ] 29.1 Service Workerの設定
+- [ ] 29.2 マニフェストファイルの作成
