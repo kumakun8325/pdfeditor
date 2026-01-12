@@ -93,7 +93,7 @@ export interface AppState {
 /**
  * トースト通知の種類
  */
-export type ToastType = 'success' | 'warning' | 'error';
+export type ToastType = 'success' | 'warning' | 'error' | 'info';
 
 /**
  * イベントハンドラーの型

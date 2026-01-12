@@ -5,6 +5,7 @@ import { ImageService } from './services/ImageService';
 import { KeyboardService } from './services/KeyboardService';
 import { UndoManager } from './managers/UndoManager';
 import { AnnotationManager } from './managers/AnnotationManager';
+import { StorageService } from './services/StorageService';
 import type { AppState, PageData, ToastType, TextAnnotation, HighlightAnnotation, UndoAction } from './types';
 import './styles/index.css';
 
@@ -41,6 +42,11 @@ class PDFEditorApp {
         return this.baseScale * this.currentZoom;
     }
     private backgroundImageData: ImageData | null = null;
+
+    // セッション保存
+    private storageService: StorageService;
+    private saveTimeout: ReturnType<typeof setTimeout> | null = null;
+    private readonly SAVE_DEBOUNCE_MS = 1000;
 
     // ... (unchanged code) ...
 
@@ -367,12 +373,13 @@ class PDFEditorApp {
         this.imageService = new ImageService();
         this.keyboardService = new KeyboardService();
         this.undoManager = new UndoManager();
+        this.storageService = new StorageService();
     }
 
     /**
      * アプリケーション初期化
      */
-    init(): void {
+    async init(): Promise<void> {
         this.cacheElements();
         this.bindEvents();
         // Undo/Redo
@@ -385,6 +392,59 @@ class PDFEditorApp {
 
         // ドロップダウンメニュー初期化
         this.setupDropdownMenus();
+
+        // 初期ロード中の表示制御
+        this.showLoading('アプリケーションを起動中...');
+        this.elements.emptyState.style.display = 'none'; // 初期化中は非表示
+
+        // セッション復元
+        try {
+            await this.storageService.init();
+            const restored = await this.restoreSession();
+
+            // 復元されなかった場合のみEmpty Stateを表示
+            if (!restored) {
+                this.elements.emptyState.style.display = 'flex';
+                this.updateUI();
+            }
+        } catch (e) {
+            console.warn('Session restore failed:', e);
+            this.elements.emptyState.style.display = 'flex';
+        } finally {
+            this.hideLoading();
+        }
+    }
+
+    /**
+     * セッションを復元
+     */
+    private async restoreSession(): Promise<boolean> {
+        const savedState = await this.storageService.loadState();
+        if (savedState && savedState.pages && savedState.pages.length > 0) {
+            this.state = savedState;
+            this.renderPageList();
+            this.updateMainView();
+            this.updateUI();
+            this.showToast('前回の続きから再開しました', 'info');
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * 自動保存（デバウンス処理）
+     */
+    private scheduleAutoSave(): void {
+        if (this.saveTimeout) {
+            clearTimeout(this.saveTimeout);
+        }
+        this.saveTimeout = setTimeout(async () => {
+            try {
+                await this.storageService.saveState(this.state);
+            } catch (e) {
+                console.warn('Auto-save failed:', e);
+            }
+        }, this.SAVE_DEBOUNCE_MS);
     }
 
     private setupDropdownMenus(): void {
@@ -712,11 +772,13 @@ class PDFEditorApp {
 
             if (this.state.selectedPageIndex === -1 && this.state.pages.length > 0) {
                 this.state.selectedPageIndex = 0;
+                this.state.selectedPageIndices = [0];
             }
 
             this.renderPageList();
             this.updateMainView();
             this.updateUI();
+            this.scheduleAutoSave();
             this.showToast(`${result.pages.length}ページを読み込みました`, 'success');
         } else {
             this.showToast(result.error || 'PDFの読み込みに失敗しました', 'error');
@@ -1171,7 +1233,12 @@ class PDFEditorApp {
 
         this.state.pages = [];
         this.state.selectedPageIndex = -1;
+        this.state.selectedPageIndices = [];
         this.state.originalPdfBytes = null;
+
+        // 自動保存をキャンセルし、ストレージをクリア
+        if (this.saveTimeout) clearTimeout(this.saveTimeout);
+        this.storageService.clearState().catch(e => console.warn('Clear state failed:', e));
 
         this.renderPageList();
         this.elements.emptyState.style.display = 'flex';
@@ -1540,6 +1607,7 @@ class PDFEditorApp {
     private pushUndo(action: UndoAction): void {
         this.undoManager.push(action);
         this.updateUI();
+        this.scheduleAutoSave();
     }
 
     /**
@@ -2323,7 +2391,7 @@ class PDFEditorApp {
     }
 
     private showToast(message: string, type: ToastType): void {
-        // 成功メッセージは非表示（警告・エラーのみ表示）
+        // 成功メッセージは非表示（警告・エラー・情報のみ表示）
         if (type === 'success') return;
 
         const toast = document.createElement('div');
