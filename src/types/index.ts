@@ -136,3 +136,15 @@ export type UndoAction =
     | { type: 'batchRotate'; pageIds: string[]; previousRotations: number[] }
     | { type: 'batchDuplicate'; addedPages: { page: PageData; index: number }[] }
     | { type: 'batchDelete'; deletedPages: { page: PageData; index: number }[] };
+
+/**
+ * コンテキストメニュー項目
+ */
+export interface MenuItem {
+    label: string;
+    action?: () => void;
+    icon?: string; // アイコン（オプション） - SVG文字列またはクラス名
+    disabled?: boolean;
+    divider?: boolean; // 区切り線かどうか
+    danger?: boolean; // 削除などの危険な操作用
+}
