@@ -118,6 +118,8 @@ export class AnnotationManager {
             const metrics = ctx.measureText(annotation.text);
             const textHeight = annotation.fontSize * scale; // 簡易的な高さ計算
             const padding = 4;
+            // ハンドルサイズ
+            const handleSize = 10;
 
             ctx.save();
             ctx.strokeStyle = '#007aff';
@@ -129,11 +131,26 @@ export class AnnotationManager {
                 textHeight + padding * 2
             );
 
-            // ハンドルを描画
-            this.drawHandle(ctx, canvasX - padding, canvasY - padding);
-            this.drawHandle(ctx, canvasX - padding + metrics.width + padding * 2, canvasY - padding);
-            this.drawHandle(ctx, canvasX - padding, canvasY - padding + textHeight + padding * 2);
-            this.drawHandle(ctx, canvasX - padding + metrics.width + padding * 2, canvasY - padding + textHeight + padding * 2);
+            // ハンドルを描画 (四隅) -> リサイズ用は右下のみ強調
+            this.drawHandle(ctx, canvasX - padding, canvasY - padding); // 左上
+            this.drawHandle(ctx, canvasX - padding + metrics.width + padding * 2, canvasY - padding); // 右上
+            this.drawHandle(ctx, canvasX - padding, canvasY - padding + textHeight + padding * 2); // 左下
+
+            // 右下（リサイズハンドル）だけ特別扱い
+            const brX = canvasX - padding + metrics.width + padding * 2;
+            const brY = canvasY - padding + textHeight + padding * 2;
+
+            // 下地 (白)
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(brX - handleSize / 2, brY - handleSize / 2, handleSize, handleSize);
+            // 枠 (青)
+            ctx.strokeRect(brX - handleSize / 2, brY - handleSize / 2, handleSize, handleSize);
+            // アイコン的な中身 (斜線など)
+            ctx.beginPath();
+            ctx.moveTo(brX - 3, brY + 3);
+            ctx.lineTo(brX + 3, brY - 3);
+            ctx.stroke();
+
             ctx.restore();
         }
 
@@ -154,9 +171,11 @@ export class AnnotationManager {
      * テキスト注釈のヒット判定
      */
     public static hitTestText(
+        ctx: CanvasRenderingContext2D,
         page: PageData,
         pdfX: number,
-        pdfY: number
+        pdfY: number,
+        scale: number
     ): TextAnnotation | null {
         if (!page.textAnnotations || page.textAnnotations.length === 0) return null;
 
@@ -164,35 +183,78 @@ export class AnnotationManager {
         for (let i = page.textAnnotations.length - 1; i >= 0; i--) {
             const ann = page.textAnnotations[i];
 
-            // 簡易ヒット判定：文字数とフォントサイズから推定
-            // 正確にはCanvasのmeasureTextを使うのが良いが、ここではModelのみで計算
-            const estimatedWidth = ann.text.length * ann.fontSize * 0.6; // 英数字混じりを考慮して0.6倍
-            const estimatedHeight = ann.fontSize * 1.2;
+            // Canvas座標に変換して判定 (measureTextを使うため)
+            ctx.save();
+            ctx.font = `${ann.fontSize * scale}px sans-serif`;
+            const metrics = ctx.measureText(ann.text);
+            const textHeight = ann.fontSize * scale;
+            ctx.restore();
 
-            const margin = 5;
+            const padding = 4; // drawTextと合わせる
+            const margin = 5; // ヒットマージン
 
-            // テキストは左上が原点（Y座標はPDF座標系で下から上なので注意が必要だが、
-            // PageDataのx, yは左下原点(PDF) or 左上原点(Canvas)? 
-            // コードを見る限り、PDF座標系(左下原点)で保存されているが、描画時に変換されている。
-            // hitTestTextの引数 pdfX, pdfY はPDF座標系。
-            // テキスト描画は fillText(text, x, y - height) ではなく (x, y) なので、
-            // AnnotationManager.drawTextでは `pageHeight - annotation.y` をCanvas Yとしている。
-            // これは「PDF座標y」が「テキストの上端」を表しているのか「ベースライン」か「左下」か？
-            // drawTextの実装: ctx.textBaseline = 'top'; canvasY = (pageHeight - ann.y) * scale;
-            // つまり ann.y は「PDFページ上端からのオフセット」ではなく「PDF座標系(左下0)でのY」
-            // Canvas Y (Top-Left 0) = Height - PDF Y.
-            // Canvas上で textBaseline=top なので、Canvas Y がテキストの上端。
-            // したがって、PDF Y は「テキストの上端」に対応するPDF座標。
-            // PDF座標系ではYは上に行くほど大きい。
-            // Canvas Y (上端) = Hy - Py.
-            // テキストはそこから下に伸びる (Canvas Y 増加)。
-            // つまり PDF座標系では Py から下に伸びる (PDF Y 減少)。
-            // 範囲: X [ann.x, ann.x + width], Y [ann.y - height, ann.y]
+            // 注釈の左上(Canvas座標)
+            const canvasPos = this.toCanvasPoint(ann.x, ann.y, scale, page.height);
+            // toCanvasPointはPDF(x, y) -> Canvas(x, pageHeight - y) * scale
+            // drawTextのCanvasYは (pageHeight - ann.y) * scale
+            // つまり toCanvasPoint の返り値と同じ。
 
-            if (pdfX >= ann.x - margin && pdfX <= ann.x + estimatedWidth + margin &&
-                pdfY >= ann.y - estimatedHeight - margin && pdfY <= ann.y + margin) {
+            const rectX = canvasPos.x - padding;
+            const rectY = canvasPos.y - padding;
+            const rectW = metrics.width + padding * 2;
+            const rectH = textHeight + padding * 2;
+
+            // タッチ判定用にクリック位置もCanvas変換
+            const clickPos = this.toCanvasPoint(pdfX, pdfY, scale, page.height);
+
+            if (clickPos.x >= rectX - margin && clickPos.x <= rectX + rectW + margin &&
+                clickPos.y >= rectY - margin && clickPos.y <= rectY + rectH + margin) {
                 return ann;
             }
+        }
+        return null;
+    }
+
+    /**
+     * テキスト注釈のリサイズハンドルヒット判定 (右下のみ)
+     */
+    public static hitTestTextHandle(
+        ctx: CanvasRenderingContext2D,
+        page: PageData,
+        pdfX: number,
+        pdfY: number,
+        scale: number,
+        targetAnnotationId: string
+    ): TextAnnotation | null {
+        if (!page.textAnnotations) return null;
+
+        const ann = page.textAnnotations.find(a => a.id === targetAnnotationId);
+        if (!ann) return null;
+
+        // サイズ計測
+        ctx.save();
+        ctx.font = `${ann.fontSize * scale}px sans-serif`;
+        const metrics = ctx.measureText(ann.text);
+        const textHeight = ann.fontSize * scale;
+        ctx.restore();
+
+        const padding = 4;
+        const handleSize = 10;
+        const hitMargin = 5;
+
+        const canvasPos = this.toCanvasPoint(ann.x, ann.y, scale, page.height);
+
+        // 右下ハンドルの中心座標
+        const brX = canvasPos.x - padding + metrics.width + padding * 2;
+        const brY = canvasPos.y - padding + textHeight + padding * 2;
+
+        const clickPos = this.toCanvasPoint(pdfX, pdfY, scale, page.height);
+
+        // 中心から handleSize/2 + margin の範囲
+        const half = handleSize / 2 + hitMargin;
+
+        if (Math.abs(clickPos.x - brX) <= half && Math.abs(clickPos.y - brY) <= half) {
+            return ann;
         }
         return null;
     }
@@ -219,7 +281,7 @@ export class AnnotationManager {
             // 描画はそこから height 分だけ下に伸びる (Canvas Y増加, PDF Y減少)
             // 範囲: X [hl.x, hl.x + hl.width], Y [hl.y - hl.height, hl.y]
 
-            const margin = 2;
+            const margin = 5;
 
             if (pdfX >= hl.x - margin && pdfX <= hl.x + hl.width + margin &&
                 pdfY <= hl.y + margin && pdfY >= hl.y - hl.height - margin) {

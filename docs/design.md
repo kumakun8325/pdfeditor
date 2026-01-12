@@ -125,7 +125,10 @@ type UndoAction =
     | { type: 'clear'; pages: PageData[]; selectedIndex: number }
     | { type: 'addText'; pageId: string; annotationId: string }
     | { type: 'addHighlight'; pageId: string; annotationId: string }
-    | { type: 'addImage'; pageId: string; index: number };
+    | { type: 'addImage'; pageId: string; index: number }
+    | { type: 'updateText'; pageId: string; annotationId: string; oldFontSize: number; newFontSize: number }
+    | { type: 'moveText'; pageId: string; annotationId: string; fromX: number; fromY: number; toX: number; toY: number }
+    | { type: 'moveHighlight'; pageId: string; annotationId: string; fromX: number; fromY: number; toX: number; toY: number };
 
 ```
 
