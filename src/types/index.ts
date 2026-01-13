@@ -167,6 +167,8 @@ export interface UIElements {
     btnExportMenu: HTMLButtonElement;
     exportMenu: HTMLDivElement;
     btnClear: HTMLButtonElement;
+    btnAddPdf: HTMLButtonElement;
+    pdfAddInput: HTMLInputElement;
     btnAddImage: HTMLButtonElement;
     btnMoveUp: HTMLButtonElement;
     btnMoveDown: HTMLButtonElement;
@@ -228,6 +230,7 @@ export interface UIElements {
 export interface AppAction {
     state: AppState; // 追加
     loadPDF(file: File): Promise<void>;
+    addPDF(file: File): Promise<void>;
     insertImage(file: File): Promise<void>;
     savePDF(): Promise<void>;
     saveAsPDF(): Promise<void>;

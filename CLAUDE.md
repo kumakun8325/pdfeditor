@@ -66,18 +66,29 @@ The interface is in Japanese (日本語).
 ## Session Status (2026-01-14)
 
 ### Completed
-- ✅ batchRotate の修正確認・ビルド成功
-- ✅ ズーム時のパン/スクロール機能追加
-  - CSS修正: `align-items: flex-start` + `margin: auto` でスクロール対応
-  - カスタムスクロールバースタイル追加
-  - `scrollbar-gutter: stable both-edges` 追加
-- ✅ コミット完了: `4870fab feat: add pan/scroll support for zoomed pages`
+- ✅ Firebaseデプロイ成功（サービスアカウント設定完了）
+- ✅ **PDF結合機能の実装（Phase 33完了）**
+  - ファイルメニューに「PDFを追加」ボタン追加
+  - 複数PDFの選択に対応（`multiple`属性）
+  - 既存ページの末尾にPDFを追加する`addPDF()`メソッド実装
+  - 変更ファイル:
+    - `index.html` - ボタンUI追加
+    - `src/types/index.ts` - `btnAddPdf`, `pdfAddInput`, `addPDF()`追加
+    - `src/main.ts` - `addPDF()`実装、`pdfAddInput`の動的生成
+    - `src/managers/EventManager.ts` - イベントバインディング追加
+- ✅ デプロイ完了: https://pdfeditor-study.web.app
 
-### Pending
-- ⏳ `git push` - GitHub認証設定待ち
-  - `gh auth login` 実行後に `git push` を実行すればOK
+### PDF結合の使い方
+1. 「開く」で最初のPDFを読み込む
+2. ファイルメニュー（▼）→「PDFを追加」で別のPDFを追加
+3. サイドバーでページをドラッグ＆ドロップで並べ替え
+4. 「保存」で結合されたPDFをダウンロード
 
 ### Pan/Scroll操作方法
 - スクロールバーで移動
 - スペースキー + ドラッグで移動
 - マウスホイールクリック + ドラッグで移動
+
+### 次のタスク候補
+- Phase 34: スマホ対応（タッチ操作）
+- Phase 35: CMYK変換・印刷用出力

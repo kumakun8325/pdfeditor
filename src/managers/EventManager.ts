@@ -59,6 +59,22 @@ export class EventManager {
             (e.target as HTMLInputElement).value = '';
         });
 
+        // PDF追加（結合用）
+        this.elements.btnAddPdf.addEventListener('click', () => {
+            this.elements.pdfAddInput.click();
+        });
+
+        this.elements.pdfAddInput.addEventListener('change', async (e) => {
+            const files = (e.target as HTMLInputElement).files;
+            if (files && files.length > 0) {
+                for (const file of Array.from(files)) {
+                    await this.app.addPDF(file);
+                }
+            }
+            // リセット（同じファイルを再選択可能に）
+            (e.target as HTMLInputElement).value = '';
+        });
+
         // ページ移動
         this.elements.btnMoveUp.addEventListener('click', () => {
             this.app.movePageUp();

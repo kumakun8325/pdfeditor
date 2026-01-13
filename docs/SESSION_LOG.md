@@ -38,3 +38,36 @@
 ### ブランチ状態
 - ブランチ名: `feature/help-system`
 - 状態: 作業完了 / マージ待ち
+
+---
+
+## 2026-01-14 (火)
+
+### 実施内容
+- **PDF結合機能の実装 (Phase 33)**
+    - ファイルメニューに「PDFを追加」ボタン追加
+    - 複数PDFの選択に対応（`multiple`属性）
+    - `addPDF()` メソッドの実装（既存ページの末尾にPDFを追加）
+- **Firebase Hosting デプロイ**
+    - サービスアカウント設定完了
+    - デプロイ成功: https://pdfeditor-study.web.app
+- **カスタムスラッシュコマンドの作成**
+    - `/finish` コマンド作成（作業終了時のドキュメント更新・コミット処理）
+
+### 変更ファイル
+- `index.html` - 「PDFを追加」ボタンUI追加
+- `src/types/index.ts` - `btnAddPdf`, `pdfAddInput`, `addPDF()` 型追加
+- `src/main.ts` - `addPDF()` メソッド実装、`pdfAddInput` 動的生成
+- `src/managers/EventManager.ts` - PDF追加イベントバインディング
+- `docs/tasks.md` - Phase 33完了
+- `docs/requirements.md` - F-034, F-035 追加
+- `docs/design.md` - addPDF設計追記
+- `.claude/commands/finish.md` - カスタムコマンド作成
+
+### 次回TODO
+- Phase 34: スマホ対応（タッチ操作）
+- Phase 35: CMYK変換・印刷用出力
+
+### ブランチ状態
+- ブランチ名: `main`
+- 状態: 作業完了

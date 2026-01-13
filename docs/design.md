@@ -140,8 +140,11 @@ type UndoAction =
 
 ```typescript
 class PDFService {
-    // PDF読み込み
+    // PDF読み込み（新規）
     async loadPDF(file: File): Promise<LoadResult>;
+
+    // PDF追加（結合用 - 既存ページの末尾に追加）
+    async addPDF(file: File): Promise<void>;
     
     // PDFからページ抽出（ArrayBufferコピー対策済み）
     async extractPages(pdfBytes: Uint8Array): Promise<PageData[]>;

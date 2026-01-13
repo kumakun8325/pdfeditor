@@ -437,6 +437,18 @@ export class PDFEditorApp implements AppAction {
             document.body.appendChild(imageInput);
         }
 
+        // PDF追加用の hidden input を動的に追加
+        let pdfAddInput = document.getElementById('pdf-add-input') as HTMLInputElement;
+        if (!pdfAddInput) {
+            pdfAddInput = document.createElement('input');
+            pdfAddInput.type = 'file';
+            pdfAddInput.id = 'pdf-add-input';
+            pdfAddInput.accept = '.pdf';
+            pdfAddInput.multiple = true;
+            pdfAddInput.style.display = 'none';
+            document.body.appendChild(pdfAddInput);
+        }
+
         this.elements = {
             btnOpen: document.getElementById('btn-open') as HTMLButtonElement,
             btnOpenHero: document.getElementById('btn-open-hero') as HTMLButtonElement, // 追加
@@ -448,6 +460,8 @@ export class PDFEditorApp implements AppAction {
             btnExportMenu: document.getElementById('btn-export-menu') as HTMLButtonElement,
             exportMenu: document.getElementById('export-menu') as HTMLDivElement,
             btnClear: document.getElementById('btn-clear') as HTMLButtonElement,
+            btnAddPdf: document.getElementById('btn-add-pdf') as HTMLButtonElement,
+            pdfAddInput: pdfAddInput,
             btnAddImage: document.getElementById('btn-add-image') as HTMLButtonElement,
             btnMoveUp: document.getElementById('btn-move-up') as HTMLButtonElement,
             btnMoveDown: document.getElementById('btn-move-down') as HTMLButtonElement,
@@ -544,6 +558,36 @@ export class PDFEditorApp implements AppAction {
             this.showToast(`${result.pages.length}ページを読み込みました`, 'success');
         } else {
             this.showToast(result.error || 'PDFの読み込みに失敗しました', 'error');
+        }
+
+        this.hideLoading();
+    }
+
+    /**
+     * 既存ページの末尾にPDFを追加する（PDF結合用）
+     */
+    public async addPDF(file: File): Promise<void> {
+        this.showLoading('PDFを追加中...');
+
+        const result = await this.pdfService.loadPDF(file);
+
+        if (result.success && result.pages) {
+            // 既存ページに追加
+            this.state.pages = [...this.state.pages, ...result.pages];
+
+            // 最初のページがなかった場合は選択
+            if (this.state.selectedPageIndex === -1 && this.state.pages.length > 0) {
+                this.state.selectedPageIndex = 0;
+                this.state.selectedPageIndices = [0];
+            }
+
+            this.renderPageList();
+            this.updateMainView();
+            this.updateUI();
+            this.scheduleAutoSave();
+            this.showToast(`${result.pages.length}ページを追加しました`, 'success');
+        } else {
+            this.showToast(result.error || 'PDFの追加に失敗しました', 'error');
         }
 
         this.hideLoading();
