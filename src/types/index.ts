@@ -257,6 +257,7 @@ export interface AppAction {
     zoomIn(): void;
     zoomOut(): void;
     resetZoom(): void;
+    handleWheelZoom(direction: number, clientX: number, clientY: number): void;
 
     // Undo/Redo
     undo(): void;

@@ -424,14 +424,23 @@ body {
 }
 
 .page-preview canvas {
-    max-width: calc(100% - 48px);
-    max-height: calc(100vh - 180px);
-    width: auto;
-    height: auto;
+    /* max-width/max-height removed to allow zooming */
     box-shadow: 0 8px 32px var(--shadow-lg);
     border-radius: var(--radius-sm);
     background: white;
+    transform-origin: center center;
+    /* Zoom from center */
 }
+
+/* Panning cursors */
+.page-preview.grab {
+    cursor: grab;
+}
+
+.page-preview.grab:active {
+    cursor: grabbing;
+}
+
 
 .page-nav {
     position: absolute;

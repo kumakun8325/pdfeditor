@@ -33,15 +33,30 @@ export class RenderManager {
 
     public setZoom(zoom: number): void {
         this.previewScale = Math.max(0.1, Math.min(zoom, 5.0)); // 制限
-
-        // ズーム変更時はキャッシュ無効化？
-        // いや、キーにスケールを含めるので自動的に別キーになる。
-        // メモリ節約のために古いスケールのキャッシュを消す戦略もありだが、
-        // 頻繁なズームイン・アウトで再利用したいので保持する。（メモリ圧迫時はクリア検討）
     }
 
     public getZoom(): number {
         return this.previewScale;
+    }
+
+    /**
+     * 現在のビューポートに合わせて最適なスケールを計算
+     */
+    public calculateFitScale(pageWidth: number, pageHeight: number): number {
+        const container = this.elements.pagePreview;
+        if (!container) return 1.0;
+
+        // padding分を引く
+        const availableWidth = container.clientWidth - 48; // padding: var(--spacing-lg) * 2
+        const availableHeight = container.clientHeight - 48;
+
+        if (availableWidth <= 0 || availableHeight <= 0) return 1.0;
+
+        const scaleX = availableWidth / pageWidth;
+        const scaleY = availableHeight / pageHeight;
+
+        // 小さい方に合わせる（全体が収まるように）
+        return Math.min(scaleX, scaleY) * 0.95; // 余白を持たせる
     }
 
     public getBackgroundImageData(): ImageData | null {
@@ -86,6 +101,9 @@ export class RenderManager {
 
         if (!ctx || state.selectedPageIndex < 0 || !state.pages[state.selectedPageIndex]) {
             if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+            // canvasのスタイルをリセット（空状態が見えるように）
+            canvas.style.width = '';
+            canvas.style.height = '';
             elements.pagePreview.classList.add('hidden');
             elements.pagePreview.style.display = '';
             elements.emptyState.classList.remove('hidden');
@@ -106,17 +124,34 @@ export class RenderManager {
 
         const pageData = state.pages[state.selectedPageIndex];
 
+        // デバッグログ
+        console.log('[RenderManager] renderPage called', {
+            pageId: pageData.id,
+            rotation: pageData.rotation,
+            hasImageBytes: !!pageData.imageBytes,
+            hasFullImage: !!pageData.fullImage,
+            hasThumbnail: !!pageData.thumbnail,
+            width: pageData.width,
+            height: pageData.height
+        });
+
         try {
             if (pageData.imageBytes || pageData.fullImage) {
+                console.log('[RenderManager] Using renderImagePage');
                 await this.renderImagePage(pageData, ctx, canvas, renderId);
             } else {
+                console.log('[RenderManager] Using renderPdfPage');
                 await this.renderPdfPage(pageData, ctx, canvas, renderId);
             }
 
-            if (renderId !== this.currentRenderId) return;
+            if (renderId !== this.currentRenderId) {
+                console.log('[RenderManager] Render cancelled (renderId mismatch)');
+                return;
+            }
 
             // 注釈を描画
             this.drawAnnotations(pageData, ctx);
+            console.log('[RenderManager] Render complete');
 
         } catch (error: any) {
             if (error.name !== 'RenderingCancelledException') {
@@ -128,11 +163,24 @@ export class RenderManager {
     private async renderImagePage(pageData: PageData, ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement, renderId: number): Promise<void> {
         // 画像ページ
         const img = new Image();
-        img.src = pageData.fullImage || pageData.thumbnail;
-        await new Promise((resolve, reject) => {
-            img.onload = resolve;
-            img.onerror = reject;
-        });
+        const src = pageData.fullImage || pageData.thumbnail;
+
+        if (!src) {
+            console.error('renderImagePage: No image source available for page', pageData.id);
+            return;
+        }
+
+        img.src = src;
+
+        try {
+            await new Promise<void>((resolve, reject) => {
+                img.onload = () => resolve();
+                img.onerror = (e) => reject(e);
+            });
+        } catch (e) {
+            console.error('renderImagePage: Failed to load image', e);
+            return;
+        }
 
         if (renderId !== this.currentRenderId) return;
 
@@ -140,34 +188,47 @@ export class RenderManager {
         const rotation = pageData.rotation || 0;
         const isRotated = rotation % 180 !== 0;
 
-        // 表示サイズ
-        const displayWidth = pageData.width * this.previewScale;
-        const displayHeight = pageData.height * this.previewScale;
+        // 元の画像サイズ（スケール適用前）
+        const originalWidth = pageData.width;
+        const originalHeight = pageData.height;
 
-        // Canvasサイズ設定
-        canvas.width = isRotated ? displayHeight : displayWidth;
-        canvas.height = isRotated ? displayWidth : displayHeight;
+        // 表示サイズ
+        const displayWidth = originalWidth * this.previewScale;
+        const displayHeight = originalHeight * this.previewScale;
+
+        // Canvasサイズ設定（回転後の見た目に合わせる）
+        const canvasWidth = isRotated ? displayHeight : displayWidth;
+        const canvasHeight = isRotated ? displayWidth : displayHeight;
+
+        canvas.width = canvasWidth;
+        canvas.height = canvasHeight;
+        canvas.style.width = `${canvasWidth}px`;
+        canvas.style.height = `${canvasHeight}px`;
 
         // 背景塗りつぶし (ダークモード対応)
         ctx.fillStyle = this.isThemeDark ? '#2d2d2d' : '#ffffff';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillRect(0, 0, canvasWidth, canvasHeight);
 
         ctx.save();
-        // 回転処理
-        ctx.translate(canvas.width / 2, canvas.height / 2);
+        // キャンバス中心に移動
+        ctx.translate(canvasWidth / 2, canvasHeight / 2);
+        // 回転
         ctx.rotate((rotation * Math.PI) / 180);
 
-        // 描画
-        if (isRotated) {
-            ctx.drawImage(img, -displayHeight / 2, -displayWidth / 2, displayHeight, displayWidth);
-        } else {
-            ctx.drawImage(img, -displayWidth / 2, -displayHeight / 2, displayWidth, displayHeight);
-        }
+        // 回転後の座標系で画像を中心に描画
+        // 回転座標系では、画像の中心を(0,0)に置く
+        ctx.drawImage(
+            img,
+            -displayWidth / 2,
+            -displayHeight / 2,
+            displayWidth,
+            displayHeight
+        );
         ctx.restore();
 
         // Bitmapとしてキャッシュに保存
         const bitmap = await createImageBitmap(canvas);
-        if (renderId !== this.currentRenderId) return; // 念のため
+        if (renderId !== this.currentRenderId) return;
 
         const key = this.getCacheKey(pageData);
         if (this.pageCache.has(key)) {
@@ -188,6 +249,9 @@ export class RenderManager {
                 canvas.width = bitmap.width;
                 canvas.height = bitmap.height;
             }
+            // スタイルも更新
+            canvas.style.width = `${canvas.width}px`;
+            canvas.style.height = `${canvas.height}px`;
             ctx.drawImage(bitmap, 0, 0);
             return;
         }
@@ -202,20 +266,30 @@ export class RenderManager {
         const pdfDoc = await loadingTask.promise;
         if (renderId !== this.currentRenderId) return;
 
-        if (pageData.originalPageIndex === undefined) return;
+        if (pageData.originalPageIndex === undefined) {
+            console.warn('[RenderManager] Original page index undefined for page', pageData.id);
+            return;
+        }
 
+        console.log('[RenderManager] renderPdfPage: Getting page', pageData.originalPageIndex + 1);
         const page = await pdfDoc.getPage(pageData.originalPageIndex + 1); // 1-based
         if (renderId !== this.currentRenderId) return;
 
         const rotation = (pageData.rotation || 0) + page.rotate;
+        console.log('[RenderManager] renderPdfPage: Calclated rotation', rotation, '(page.rotate:', page.rotate, 'data.rotation:', pageData.rotation, ')');
+
         const viewport = page.getViewport({ scale: this.previewScale, rotation });
 
         canvas.width = viewport.width;
         canvas.height = viewport.height;
+        canvas.style.width = `${canvas.width}px`;
+        canvas.style.height = `${canvas.height}px`;
 
         // 背景クリア
         ctx.fillStyle = this.isThemeDark ? '#2d2d2d' : '#ffffff';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        console.log('[RenderManager] renderPdfPage: Starting page.render');
 
         const renderContext = {
             canvasContext: ctx,
@@ -225,7 +299,8 @@ export class RenderManager {
         this.renderTask = page.render(renderContext);
         try {
             await this.renderTask.promise;
-        } catch (e) {
+            console.log('[RenderManager] renderPdfPage: page.render resolved');
+        } catch (e: any) {
             // Cancelled
             return;
         }

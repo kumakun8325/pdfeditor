@@ -654,8 +654,14 @@ export class PDFEditorApp implements AppAction {
 
         this.pageManager.rotatePages(indices);
 
+        // キャッシュをクリア（回転後の正しい画像を表示するため）
+        if (this.renderManager) {
+            this.renderManager.clearCache();
+        }
+
         this.renderPageList();
         this.updateMainView();
+        this.updateUI(); // Undo/Redoボタン状態更新
         const msg = indices.length === 1 ? 'ページを90°回転しました' : `${indices.length}ページを回転しました`;
         this.showToast(msg, 'success');
     }
@@ -735,7 +741,37 @@ export class PDFEditorApp implements AppAction {
 
     private async updateMainView(): Promise<void> {
         if (this.renderManager) {
+            // 初回表示時かつズーム未設定の場合、フィットさせる？
+            // ここではシンプルにレンダリングのみ
             await this.renderManager.renderMainView();
+        }
+    }
+
+    public handleWheelZoom(direction: number, _clientX: number, _clientY: number): void {
+        if (!this.renderManager) return;
+
+        const currentZoom = this.renderManager.getZoom();
+        let newZoom = currentZoom;
+        const ZOOM_STEP = 0.1;
+
+        if (direction < 0) {
+            newZoom += ZOOM_STEP; // Zoom In
+        } else {
+            newZoom -= ZOOM_STEP; // Zoom Out
+        }
+
+        // 範囲制限はRenderManager側でもやるが、ここでも事前チェック可能
+        newZoom = Math.max(0.1, Math.min(newZoom, 5.0));
+
+        if (newZoom !== currentZoom) {
+            // マウス位置を中心にズームしたい場合の計算（今はシンプルに中心ズーム or 左上ズーム）
+            // Scroll位置調整が必要。
+            // 簡易実装: まずズーム変更
+            this.renderManager.setZoom(newZoom);
+            this.handleZoomChange();
+
+            // TODO: マウス位置中心のズーム (高度な実装)
+            // 現在のscrollLeft/Topとマウス位置から、新しいscrollLeft/Topを計算
         }
     }
 
@@ -768,8 +804,7 @@ export class PDFEditorApp implements AppAction {
         this.storageService.clearState().catch(e => console.warn('Clear state failed:', e));
 
         this.renderPageList();
-        this.elements.emptyState.style.display = 'flex';
-        this.elements.pagePreview.style.display = 'none';
+        this.updateMainView(); // これでRenderManagerがemptyStateを正しく表示する
         this.elements.pageNav.style.display = 'none';
         this.updateUI();
         this.showToast('ページをクリアしました', 'success');
@@ -1486,9 +1521,12 @@ export class PDFEditorApp implements AppAction {
                         action.newRotation = page.rotation || 0;
                     }
                     page.rotation = action.previousRotation;
+                    // 回転変更時はキャッシュをクリア（古いビットマップを使わないように）
+                    if (this.renderManager) {
+                        this.renderManager.clearCache();
+                    }
                     this.updateMainView();
-                    // サムネイル更新はコストが高いので省略または非同期で行うなどが考えられるが
-                    // ここでは一旦そのまま
+                    this.renderPageList(); // サムネイルも更新
                 }
                 break;
             }
@@ -1794,7 +1832,12 @@ export class PDFEditorApp implements AppAction {
                 const page = this.state.pages.find(p => p.id === action.pageId);
                 if (page && action.newRotation !== undefined) {
                     page.rotation = action.newRotation;
+                    // 回転変更時はキャッシュをクリア
+                    if (this.renderManager) {
+                        this.renderManager.clearCache();
+                    }
                     this.updateMainView();
+                    this.renderPageList();
                 }
                 return;
             }
@@ -2269,36 +2312,37 @@ export class PDFEditorApp implements AppAction {
             toast.remove();
         }, 3000);
     }
-
-
-    public setZoom(zoomIn: boolean): void {
-        if (this.renderManager) {
-            const currentZoom = this.renderManager.getZoom();
-            let newZoom = zoomIn ? currentZoom + 0.1 : currentZoom - 0.1;
-
-            // 0.1, 0.2 ... のようにきれいに丸める
-            newZoom = Math.round(newZoom * 10) / 10;
-
-            this.renderManager.setZoom(newZoom);
-            this.toolbarManager.updateZoom(newZoom);
-            this.updateMainView();
-        }
-    }
-
+    // ズーム機能
     public zoomIn(): void {
-        this.setZoom(true);
+        if (!this.renderManager) return;
+        const current = this.renderManager.getZoom();
+        this.renderManager.setZoom(current + 0.1);
+        this.handleZoomChange();
     }
 
     public zoomOut(): void {
-        this.setZoom(false);
+        if (!this.renderManager) return;
+        const current = this.renderManager.getZoom();
+        this.renderManager.setZoom(current - 0.1);
+        this.handleZoomChange();
     }
 
     public resetZoom(): void {
-        if (this.renderManager) {
-            this.renderManager.setZoom(1.0);
-            this.toolbarManager.updateZoom(1.0);
-            this.updateMainView();
-        }
+        if (!this.renderManager) return;
+
+        // ズームを100%にリセット
+        this.renderManager.setZoom(1.0);
+        this.handleZoomChange();
+    }
+
+    private handleZoomChange(): void {
+        const zoom = this.renderManager.getZoom();
+        this.elements.zoomLevel.textContent = `${Math.round(zoom * 100)}%`;
+
+        // ズーム変更時は全体を再描画（キャッシュ有効活用）
+        // updateMainViewだとrenderPageが走る
+        this.renderManager.clearCanvas(); // クリアしないとゴミが残る可能性？ renderPage内でクリアされる
+        this.updateMainView();
     }
 }
 

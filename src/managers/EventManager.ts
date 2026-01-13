@@ -173,6 +173,10 @@ export class EventManager {
         this.setupKeyboardShortcuts();
 
         this.setupContextMenu();
+
+        // Canvas & Shortcuts
+        this.bindShortcuts();
+        this.setupCanvasEvents();
     }
 
     private setupDropZone(): void {
@@ -367,6 +371,190 @@ export class EventManager {
                 }
             ];
             this.contextMenuManager.show(e.clientX, e.clientY, items);
+        });
+    }
+
+    // Panning state
+    private isPanning = false;
+    private panStart = { x: 0, y: 0 };
+    private panScrollStart = { left: 0, top: 0 };
+    private isSpacePressed = false;
+
+    private bindShortcuts(): void {
+        window.addEventListener('keydown', (e) => {
+            if ((e.ctrlKey || e.metaKey) && !e.shiftKey) {
+                switch (e.key.toLowerCase()) {
+                    case 'z':
+                        e.preventDefault();
+                        this.app.undo();
+                        break;
+                    case 'y':
+                        e.preventDefault();
+                        this.app.redo();
+                        break;
+                    case 'a':
+                        e.preventDefault();
+                        // input/textarea内では無効化
+                        if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) return;
+                        this.app.selectAllPages();
+                        break;
+                    case 'd':
+                        e.preventDefault();
+                        this.app.duplicatePages();
+                        break;
+                    case 'c':
+                        if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) return;
+                        this.app.handleCopy();
+                        break;
+                    case 'v':
+                        if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) return;
+                        this.app.handlePaste();
+                        break;
+                }
+            } else if ((e.ctrlKey || e.metaKey) && e.shiftKey) {
+                switch (e.key.toLowerCase()) {
+                    case 'z':
+                        e.preventDefault();
+                        this.app.redo();
+                        break;
+                }
+            } else if (e.key === 'Delete') {
+                if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) return;
+
+                // 注釈選択中なら注釈削除
+                if (this.app.getSelectedAnnotationId()) {
+                    this.app.deleteSelectedAnnotation();
+                } else {
+                    // ページ削除
+                    this.app.deletePages();
+                }
+            } else if (e.key === ' ') {
+                // Space key for panning
+                if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) return;
+                e.preventDefault();
+                if (!this.isSpacePressed) {
+                    this.isSpacePressed = true;
+                    this.elements.pagePreview.classList.add('grab');
+                }
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            if (e.key === ' ') {
+                this.isSpacePressed = false;
+                this.isPanning = false;
+                this.elements.pagePreview.classList.remove('grab');
+                this.elements.pagePreview.classList.remove('grabbing');
+            }
+        });
+
+        // Wheel Zoom
+        this.elements.pagePreview.addEventListener('wheel', (e) => {
+            if (e.ctrlKey || e.metaKey) {
+                e.preventDefault();
+                const direction = e.deltaY > 0 ? -1 : 1;
+                // app.handleWheelZoom を直接呼び出し
+                this.app.handleWheelZoom(direction, e.clientX, e.clientY);
+            }
+        }, { passive: false });
+    }
+
+    private setupCanvasEvents(): void {
+        const canvas = this.elements.previewCanvas;
+        const container = this.elements.pagePreview;
+
+        // Panning (MouseDown)
+        container.addEventListener('mousedown', (e) => {
+            if (this.isSpacePressed || e.button === 1) { // Middle click or Space+Click
+                e.preventDefault();
+                this.isPanning = true;
+                this.panStart = { x: e.clientX, y: e.clientY };
+                this.panScrollStart = {
+                    left: container.scrollLeft,
+                    top: container.scrollTop
+                };
+                container.classList.add('grabbing');
+                return;
+            }
+        });
+
+        // MouseMove (Panning)
+        window.addEventListener('mousemove', (e) => {
+            if (this.isPanning) {
+                e.preventDefault();
+                const dx = e.clientX - this.panStart.x;
+                const dy = e.clientY - this.panStart.y;
+                container.scrollLeft = this.panScrollStart.left - dx;
+                container.scrollTop = this.panScrollStart.top - dy;
+            }
+        });
+
+        window.addEventListener('mouseup', () => {
+            if (this.isPanning) {
+                this.isPanning = false;
+                container.classList.remove('grabbing');
+            }
+        });
+
+        // Canvas interactions - Delegate to App via onCanvas...
+        canvas.addEventListener('mousedown', (e) => {
+            if (this.isPanning || this.isSpacePressed) return;
+            this.app.onCanvasMouseDown(e);
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (this.isPanning) return;
+            this.app.onCanvasMouseMove(e);
+        });
+
+        canvas.addEventListener('mouseup', (e) => {
+            if (this.isPanning) return;
+            this.app.onCanvasMouseUp(e);
+        });
+
+        canvas.addEventListener('mouseleave', () => {
+            if (this.isPanning) return;
+            this.app.onCanvasMouseLeave();
+        });
+
+        // Double Click
+        canvas.addEventListener('dblclick', (e) => {
+            this.app.onCanvasDoubleClick(e);
+        });
+
+        // Touch support is complex to map 1:1, leaving as is or simplifying?
+        // Relying on default mouse emulation for now or previous logic if valid.
+        // Assuming previous logic was removed or I should re-add simple delegations.
+
+        canvas.addEventListener('touchstart', (e) => {
+            // 簡易的なタッチ対応: PC向けイベントへ転送
+            if (e.touches.length === 1) {
+                const touch = e.touches[0];
+                const mouseEvent = new MouseEvent('mousedown', {
+                    clientX: touch.clientX,
+                    clientY: touch.clientY,
+                    bubbles: true
+                });
+                this.app.onCanvasMouseDown(mouseEvent);
+            }
+        }, { passive: false });
+
+        canvas.addEventListener('touchmove', (e) => {
+            if (e.touches.length === 1) {
+                e.preventDefault();
+                const touch = e.touches[0];
+                const mouseEvent = new MouseEvent('mousemove', {
+                    clientX: touch.clientX,
+                    clientY: touch.clientY,
+                    bubbles: true
+                });
+                this.app.onCanvasMouseMove(mouseEvent);
+            }
+        }, { passive: false });
+
+        canvas.addEventListener('touchend', (_e) => {
+            const mouseEvent = new MouseEvent('mouseup', { bubbles: true });
+            this.app.onCanvasMouseUp(mouseEvent);
         });
     }
 }
