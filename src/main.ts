@@ -1743,6 +1743,11 @@ export class PDFEditorApp implements AppAction {
                         page.rotation = action.previousRotations[i];
                     }
                 }
+                // 回転変更時はキャッシュをクリア（古いビットマップを使わないように）
+                if (this.renderManager) {
+                    this.renderManager.clearCache();
+                }
+                this.updateMainView();
                 this.renderPageList();
                 break;
             }
@@ -2015,6 +2020,12 @@ export class PDFEditorApp implements AppAction {
             case 'batchRotate': {
                 this.pageManager.rotatePages(action.pageIds.map(id => this.state.pages.findIndex(p => p.id === id)).filter(i => i !== -1));
                 this.undoManager.popUndo();
+                // 回転変更時はキャッシュをクリアしてUI更新
+                if (this.renderManager) {
+                    this.renderManager.clearCache();
+                }
+                this.updateMainView();
+                this.renderPageList();
                 return;
             }
 
