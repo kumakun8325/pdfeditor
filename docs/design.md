@@ -2,6 +2,8 @@
 
 ## 1. アーキテクチャ概要
 
+本アプリケーションは **Manager Pattern** を採用し、各機能領域を専用のManagerクラスに委譲しています。
+
 ```mermaid
 graph TB
     subgraph UI Layer
@@ -10,25 +12,59 @@ graph TB
         B --> D[MainView/プレビュー]
         B --> E[Toolbar]
     end
-    
+
+    subgraph Manager Layer
+        M1[EventManager]
+        M2[RenderManager]
+        M3[PageManager]
+        M4[SelectionManager]
+        M5[AnnotationManager]
+        M6[ToolbarManager]
+        M7[ContextMenuManager]
+        M8[DragDropManager]
+        M9[UndoManager]
+        M10[HelpManager]
+    end
+
     subgraph Service Layer
         F[PDFService]
         G[ImageService]
         H[KeyboardService]
+        K[StorageService]
     end
-    
+
     subgraph External Libraries
         I[pdfjs-dist]
         J[pdf-lib]
     end
-    
-    C --> F
-    D --> F
-    E --> F
+
+    B --> M1
+    B --> M2
+    B --> M3
+    B --> M9
+    M1 --> H
+    M2 --> F
+    M3 --> F
     F --> I
     F --> J
     G --> J
+    K --> L[IndexedDB]
 ```
+
+### Manager責務一覧
+
+| Manager | 責務 |
+|---------|------|
+| EventManager | イベント統括、キーボード/マウスイベント、ドロップダウン管理 |
+| RenderManager | Canvas描画、ズーム制御、ページキャッシュ |
+| PageManager | ページ操作（削除、回転、複製、並べ替え） |
+| SelectionManager | 複数ページ選択、範囲選択 |
+| AnnotationManager | 注釈の描画、ヒット判定、座標変換 |
+| ToolbarManager | ツールバーUI状態管理 |
+| ContextMenuManager | 右クリックメニュー |
+| DragDropManager | ファイル/ページのドラッグ&ドロップ |
+| UndoManager | Undo/Redoスタック管理 |
+| HelpManager | ヘルプモーダル |
 
 ---
 
@@ -36,26 +72,46 @@ graph TB
 
 ```
 pdfeditor/
+├── .claude/
+│   └── commands/            # カスタムスラッシュコマンド
+│       └── finish.md
 ├── docs/
 │   ├── requirements.md      # 要件定義書
 │   ├── design.md            # 設計書（本ファイル）
-│   └── tasks.md             # タスク一覧
+│   ├── tasks.md             # タスク一覧
+│   ├── SESSION_LOG.md       # セッションログ
+│   └── walkthrough.md       # ウォークスルー
 ├── src/
-│   ├── main.ts              # アプリケーションエントリー・メインロジック
+│   ├── main.ts              # アプリケーションエントリー（PDFEditorApp）
 │   ├── styles/
 │   │   └── index.css        # 全スタイル統合
+│   ├── managers/            # 機能別Managerクラス
+│   │   ├── EventManager.ts
+│   │   ├── RenderManager.ts
+│   │   ├── PageManager.ts
+│   │   ├── SelectionManager.ts
+│   │   ├── AnnotationManager.ts
+│   │   ├── ToolbarManager.ts
+│   │   ├── ContextMenuManager.ts
+│   │   ├── DragDropManager.ts
+│   │   ├── UndoManager.ts
+│   │   └── HelpManager.ts
 │   ├── services/
 │   │   ├── PDFService.ts    # PDF操作サービス
 │   │   ├── ImageService.ts  # 画像処理サービス
-│   │   └── KeyboardService.ts # キーボードショートカット
+│   │   ├── KeyboardService.ts # キーボードショートカット
+│   │   └── StorageService.ts  # セッション保存（IndexedDB）
 │   ├── types/
 │   │   └── index.ts         # 型定義
+│   ├── ui/
+│   │   └── icons.ts         # SVGアイコン定義
 │   └── utils/
 │       └── uuid.ts          # UUID生成
 ├── index.html               # エントリーポイントHTML
 ├── package.json
 ├── tsconfig.json
 ├── vite.config.ts
+├── CLAUDE.md                # Claude Code用ガイド
 └── README.md
 ```
 
@@ -67,10 +123,11 @@ pdfeditor/
 
 ```typescript
 interface AppState {
-    pages: PageData[];           // ページ情報一覧
-    selectedPageIndex: number;   // 選択中のページインデックス
-    isLoading: boolean;          // ローディング状態
-    isDarkMode: boolean;         // ダークモード状態
+    pages: PageData[];                    // ページ情報一覧
+    selectedPageIndex: number;            // 選択中のページインデックス
+    selectedPageIndices: number[];        // 複数選択中のページインデックス
+    isLoading: boolean;                   // ローディング状態
+    isDarkMode: boolean;                  // ダークモード状態
     originalPdfBytes: Uint8Array | null;  // 元PDFのバイトデータ
 }
 ```
@@ -106,6 +163,7 @@ interface TextAnnotation {
     y: number;
     fontSize: number;
     color: string;
+    rotation?: number;  // 回転角度（度、時計回り）
 }
 
 interface HighlightAnnotation {
@@ -117,18 +175,31 @@ interface HighlightAnnotation {
     color: string;
 }
 
-// Undo操作の型定義
+// Undo操作の型定義（18種類）
 type UndoAction =
+    // 単一ページ操作
     | { type: 'deletePage'; page: PageData; index: number }
     | { type: 'movePage'; fromIndex: number; toIndex: number }
-    | { type: 'rotatePage'; pageId: string; previousRotation: number }
+    | { type: 'rotatePage'; pageId: string; previousRotation: number; newRotation?: number }
     | { type: 'clear'; pages: PageData[]; selectedIndex: number }
-    | { type: 'addText'; pageId: string; annotationId: string }
-    | { type: 'addHighlight'; pageId: string; annotationId: string }
-    | { type: 'addImage'; pageId: string; index: number }
-    | { type: 'updateText'; pageId: string; annotationId: string; oldFontSize: number; newFontSize: number }
+    | { type: 'duplicatePage'; pageId: string; index: number; page?: PageData }
+    // 注釈操作
+    | { type: 'addText'; pageId: string; annotationId: string; annotation?: TextAnnotation }
+    | { type: 'addHighlight'; pageId: string; annotationId: string; annotation?: HighlightAnnotation }
+    | { type: 'deleteText'; pageId: string; annotationId: string; annotation: TextAnnotation }
+    | { type: 'deleteHighlight'; pageId: string; annotationId: string; annotation: HighlightAnnotation }
     | { type: 'moveText'; pageId: string; annotationId: string; fromX: number; fromY: number; toX: number; toY: number }
-    | { type: 'moveHighlight'; pageId: string; annotationId: string; fromX: number; fromY: number; toX: number; toY: number };
+    | { type: 'moveHighlight'; pageId: string; annotationId: string; fromX: number; fromY: number; toX: number; toY: number }
+    | { type: 'rotateText'; pageId: string; annotationId: string; oldRotation: number; newRotation: number }
+    | { type: 'updateText'; pageId: string; annotationId: string; oldText: string; newText: string; oldColor: string; newColor: string; oldFontSize: number; newFontSize: number }
+    | { type: 'resizeHighlight'; pageId: string; annotationId: string; oldWidth: number; newWidth: number; oldHeight: number; newHeight: number }
+    // 画像操作
+    | { type: 'addImage'; pageId: string; index: number; page?: PageData }
+    // バッチ操作
+    | { type: 'batchMove'; fromIndices: number[]; toIndex: number; movedPageIds: string[] }
+    | { type: 'batchRotate'; pageIds: string[]; previousRotations: number[] }
+    | { type: 'batchDuplicate'; addedPages: { page: PageData; index: number }[] }
+    | { type: 'batchDelete'; deletedPages: { page: PageData; index: number }[] };
 
 ```
 
@@ -200,12 +271,30 @@ class ImageService {
 class KeyboardService {
     // キーボードイベントリスナー登録
     init(): void;
-    
+
     // ショートカット追加
-    addShortcut(key: string, modifiers: string[], callback: () => void): void;
-    
+    addShortcut(key: string, modifiers: ('ctrl' | 'meta' | 'shift' | 'alt')[], callback: () => void): void;
+
+    // ショートカット削除
+    removeShortcut(key: string, modifiers: ('ctrl' | 'meta' | 'shift' | 'alt')[]): void;
+
     // クリーンアップ
     destroy(): void;
+}
+```
+
+### 4.4 StorageService
+
+```typescript
+class StorageService {
+    // セッション状態の保存（IndexedDB）
+    async saveState(state: AppState): Promise<void>;
+
+    // セッション状態の復元
+    async loadState(): Promise<AppState | null>;
+
+    // セッションのクリア
+    async clearState(): Promise<void>;
 }
 ```
 
@@ -274,10 +363,24 @@ class KeyboardService {
 | `Cmd + S` | PDFを保存 | Mac |
 | `Ctrl + D` | 選択ページ削除 | Windows |
 | `Cmd + D` | 選択ページ削除 | Mac |
-| `Ctrl + C` | コピー（注釈/ページ） | Windows |
-| `Cmd + C` | コピー（注釈/ページ） | Mac |
-| `Ctrl + V` | 貼り付け（注釈/ページ） | Windows |
-| `Cmd + V` | 貼り付け（注釈/ページ） | Mac |
+| `Ctrl + Z` | Undo | Windows |
+| `Cmd + Z` | Undo | Mac |
+| `Ctrl + Y` | Redo | Windows |
+| `Cmd + Shift + Z` | Redo | Mac |
+| `Ctrl + A` | 全ページ選択 | Windows |
+| `Cmd + A` | 全ページ選択 | Mac |
+| `Ctrl + C` | コピー（注釈） | Windows |
+| `Cmd + C` | コピー（注釈） | Mac |
+| `Ctrl + V` | 貼り付け（注釈） | Windows |
+| `Cmd + V` | 貼り付け（注釈） | Mac |
+| `Ctrl + +` | ズームイン | Windows |
+| `Cmd + +` | ズームイン | Mac |
+| `Ctrl + -` | ズームアウト | Windows |
+| `Cmd + -` | ズームアウト | Mac |
+| `Ctrl + 0` | ズームリセット | Windows |
+| `Cmd + 0` | ズームリセット | Mac |
+| `Delete` / `Backspace` | 選択した注釈を削除 | 共通 |
+| `Space + ドラッグ` | パン（移動） | 共通 |
 | `↑` | 前のページを選択 | 共通 |
 | `↓` | 次のページを選択 | 共通 |
 
