@@ -511,6 +511,10 @@ export class PDFEditorApp implements AppAction {
             btnHelp: document.getElementById('btn-help') as HTMLButtonElement,
             helpModal: document.getElementById('help-modal') as HTMLDivElement,
             helpModalClose: document.getElementById('help-modal-close') as HTMLButtonElement,
+            // Mobile
+            btnMobileMenu: document.getElementById('btn-mobile-menu') as HTMLButtonElement,
+            sidebar: document.getElementById('sidebar') as HTMLElement,
+            sidebarOverlay: document.getElementById('sidebar-overlay') as HTMLDivElement,
         };
     }
 
@@ -2398,6 +2402,38 @@ export class PDFEditorApp implements AppAction {
         // updateMainViewだとrenderPageが走る
         this.renderManager.clearCanvas(); // クリアしないとゴミが残る可能性？ renderPage内でクリアされる
         this.updateMainView();
+    }
+
+    // Mobile sidebar operations
+    public toggleSidebar(): void {
+        const { sidebar, sidebarOverlay } = this.elements;
+        const isOpen = sidebar.classList.contains('open');
+
+        if (isOpen) {
+            this.closeSidebar();
+        } else {
+            sidebar.classList.add('open');
+            sidebarOverlay.classList.add('visible');
+            document.body.classList.add('touch-active');
+        }
+    }
+
+    public closeSidebar(): void {
+        const { sidebar, sidebarOverlay } = this.elements;
+        sidebar.classList.remove('open');
+        sidebarOverlay.classList.remove('visible');
+        document.body.classList.remove('touch-active');
+    }
+
+    // Pinch zoom handler
+    public handlePinchZoom(scale: number, _centerX: number, _centerY: number): void {
+        if (!this.renderManager) return;
+
+        const current = this.renderManager.getZoom();
+        const newZoom = Math.max(0.25, Math.min(5.0, current * scale));
+
+        this.renderManager.setZoom(newZoom);
+        this.handleZoomChange();
     }
 }
 

@@ -193,6 +193,116 @@ export class EventManager {
         // Canvas & Shortcuts
         this.bindShortcuts();
         this.setupCanvasEvents();
+
+        // Mobile sidebar
+        this.setupMobileSidebar();
+    }
+
+    // Swipe state for sidebar
+    private swipeState = {
+        startX: 0,
+        startY: 0,
+        isSwipeGesture: false,
+        isSidebarSwipe: false
+    };
+
+    private setupMobileSidebar(): void {
+        const { btnMobileMenu, sidebarOverlay, sidebar } = this.elements;
+
+        // Mobile menu button
+        if (btnMobileMenu) {
+            btnMobileMenu.addEventListener('click', () => {
+                this.app.toggleSidebar();
+            });
+        }
+
+        // Sidebar overlay click to close
+        if (sidebarOverlay) {
+            sidebarOverlay.addEventListener('click', () => {
+                this.app.closeSidebar();
+            });
+        }
+
+        // Close sidebar when page is selected on mobile
+        const pageList = this.elements.pageList;
+        if (pageList) {
+            pageList.addEventListener('click', (e) => {
+                const target = e.target as HTMLElement;
+                if (target.closest('.page-thumbnail')) {
+                    // On mobile, close sidebar after selection
+                    if (window.innerWidth < 768) {
+                        setTimeout(() => this.app.closeSidebar(), 150);
+                    }
+                }
+            });
+        }
+
+        // Swipe gestures for sidebar (mobile only)
+        this.setupSidebarSwipe(sidebar);
+    }
+
+    private setupSidebarSwipe(sidebar: HTMLElement): void {
+        // Swipe from left edge to open sidebar
+        document.addEventListener('touchstart', (e) => {
+            if (window.innerWidth >= 768) return; // Desktop: ignore
+
+            const touch = e.touches[0];
+            this.swipeState.startX = touch.clientX;
+            this.swipeState.startY = touch.clientY;
+            this.swipeState.isSwipeGesture = false;
+            this.swipeState.isSidebarSwipe = false;
+
+            // Check if swipe started from left edge (for opening)
+            const isLeftEdge = touch.clientX < 30;
+            // Check if sidebar is open (for closing by swiping left)
+            const isSidebarOpen = sidebar.classList.contains('open');
+
+            if (isLeftEdge || isSidebarOpen) {
+                this.swipeState.isSidebarSwipe = true;
+            }
+        }, { passive: true });
+
+        document.addEventListener('touchmove', (e) => {
+            if (!this.swipeState.isSidebarSwipe || window.innerWidth >= 768) return;
+
+            const touch = e.touches[0];
+            const deltaX = touch.clientX - this.swipeState.startX;
+            const deltaY = touch.clientY - this.swipeState.startY;
+
+            // Determine if this is a horizontal swipe
+            if (!this.swipeState.isSwipeGesture && Math.abs(deltaX) > 10) {
+                // If horizontal movement is greater than vertical, it's a swipe
+                if (Math.abs(deltaX) > Math.abs(deltaY)) {
+                    this.swipeState.isSwipeGesture = true;
+                } else {
+                    this.swipeState.isSidebarSwipe = false;
+                }
+            }
+        }, { passive: true });
+
+        document.addEventListener('touchend', (e) => {
+            if (!this.swipeState.isSidebarSwipe || !this.swipeState.isSwipeGesture) {
+                this.swipeState.isSidebarSwipe = false;
+                return;
+            }
+            if (window.innerWidth >= 768) return;
+
+            const touch = e.changedTouches[0];
+            const deltaX = touch.clientX - this.swipeState.startX;
+            const isSidebarOpen = sidebar.classList.contains('open');
+
+            // Swipe right to open (if started from left edge)
+            if (deltaX > 50 && !isSidebarOpen) {
+                this.app.toggleSidebar();
+            }
+            // Swipe left to close (if sidebar is open)
+            else if (deltaX < -50 && isSidebarOpen) {
+                this.app.closeSidebar();
+            }
+
+            this.swipeState.isSidebarSwipe = false;
+            this.swipeState.isSwipeGesture = false;
+        }, { passive: true });
     }
 
     private setupDropZone(): void {
@@ -538,13 +648,47 @@ export class EventManager {
             this.app.onCanvasDoubleClick(e);
         });
 
-        // Touch support is complex to map 1:1, leaving as is or simplifying?
-        // Relying on default mouse emulation for now or previous logic if valid.
-        // Assuming previous logic was removed or I should re-add simple delegations.
+        // Touch support with pinch zoom
+        this.setupTouchEvents(canvas, container);
+    }
 
+    // Touch state for pinch zoom
+    private touchState = {
+        initialDistance: 0,
+        isPinching: false,
+        lastScale: 1,
+        touchStarted: false
+    };
+
+    private getTouchDistance(touches: TouchList): number {
+        if (touches.length < 2) return 0;
+        const dx = touches[0].clientX - touches[1].clientX;
+        const dy = touches[0].clientY - touches[1].clientY;
+        return Math.sqrt(dx * dx + dy * dy);
+    }
+
+    private getTouchCenter(touches: TouchList): { x: number; y: number } {
+        if (touches.length < 2) {
+            return { x: touches[0].clientX, y: touches[0].clientY };
+        }
+        return {
+            x: (touches[0].clientX + touches[1].clientX) / 2,
+            y: (touches[0].clientY + touches[1].clientY) / 2
+        };
+    }
+
+    private setupTouchEvents(canvas: HTMLCanvasElement, container: HTMLDivElement): void {
         canvas.addEventListener('touchstart', (e) => {
-            // 簡易的なタッチ対応: PC向けイベントへ転送
-            if (e.touches.length === 1) {
+            this.touchState.touchStarted = true;
+
+            if (e.touches.length === 2) {
+                // Pinch zoom start
+                e.preventDefault();
+                this.touchState.isPinching = true;
+                this.touchState.initialDistance = this.getTouchDistance(e.touches);
+                this.touchState.lastScale = 1;
+            } else if (e.touches.length === 1 && !this.touchState.isPinching) {
+                // Single touch - delegate to app
                 const touch = e.touches[0];
                 const mouseEvent = new MouseEvent('mousedown', {
                     clientX: touch.clientX,
@@ -556,7 +700,23 @@ export class EventManager {
         }, { passive: false });
 
         canvas.addEventListener('touchmove', (e) => {
-            if (e.touches.length === 1) {
+            if (e.touches.length === 2 && this.touchState.isPinching) {
+                // Pinch zoom
+                e.preventDefault();
+                const currentDistance = this.getTouchDistance(e.touches);
+                if (this.touchState.initialDistance > 0) {
+                    const scale = currentDistance / this.touchState.initialDistance;
+                    const center = this.getTouchCenter(e.touches);
+
+                    // Only apply if scale change is significant
+                    const scaleChange = scale / this.touchState.lastScale;
+                    if (Math.abs(scaleChange - 1) > 0.02) {
+                        this.app.handlePinchZoom(scaleChange, center.x, center.y);
+                        this.touchState.lastScale = scale;
+                    }
+                }
+            } else if (e.touches.length === 1 && !this.touchState.isPinching) {
+                // Single touch move - delegate to app
                 e.preventDefault();
                 const touch = e.touches[0];
                 const mouseEvent = new MouseEvent('mousemove', {
@@ -568,9 +728,66 @@ export class EventManager {
             }
         }, { passive: false });
 
-        canvas.addEventListener('touchend', (_e) => {
-            const mouseEvent = new MouseEvent('mouseup', { bubbles: true });
-            this.app.onCanvasMouseUp(mouseEvent);
-        });
+        canvas.addEventListener('touchend', (e) => {
+            if (e.touches.length === 0) {
+                // All touches ended
+                if (this.touchState.touchStarted && !this.touchState.isPinching) {
+                    const mouseEvent = new MouseEvent('mouseup', { bubbles: true });
+                    this.app.onCanvasMouseUp(mouseEvent);
+                }
+                this.touchState.isPinching = false;
+                this.touchState.initialDistance = 0;
+                this.touchState.lastScale = 1;
+                this.touchState.touchStarted = false;
+            } else if (e.touches.length === 1 && this.touchState.isPinching) {
+                // One finger lifted during pinch - reset pinch state
+                this.touchState.isPinching = false;
+                this.touchState.initialDistance = 0;
+                this.touchState.lastScale = 1;
+            }
+        }, { passive: false });
+
+        // Touch panning on container
+        this.setupTouchPanning(container);
+    }
+
+    private setupTouchPanning(container: HTMLDivElement): void {
+        let panStartX = 0;
+        let panStartY = 0;
+        let scrollStartLeft = 0;
+        let scrollStartTop = 0;
+        let isPanningTouch = false;
+
+        container.addEventListener('touchstart', (e) => {
+            // Only pan with one finger and when not on canvas (handled separately)
+            if (e.touches.length === 1) {
+                const touch = e.touches[0];
+                const target = e.target as HTMLElement;
+
+                // Don't pan if touch started on canvas (canvas handles its own events)
+                if (target === this.elements.previewCanvas) return;
+
+                panStartX = touch.clientX;
+                panStartY = touch.clientY;
+                scrollStartLeft = container.scrollLeft;
+                scrollStartTop = container.scrollTop;
+                isPanningTouch = true;
+            }
+        }, { passive: true });
+
+        container.addEventListener('touchmove', (e) => {
+            if (!isPanningTouch || e.touches.length !== 1) return;
+
+            const touch = e.touches[0];
+            const dx = touch.clientX - panStartX;
+            const dy = touch.clientY - panStartY;
+
+            container.scrollLeft = scrollStartLeft - dx;
+            container.scrollTop = scrollStartTop - dy;
+        }, { passive: true });
+
+        container.addEventListener('touchend', () => {
+            isPanningTouch = false;
+        }, { passive: true });
     }
 }
