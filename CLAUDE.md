@@ -99,17 +99,24 @@ The interface is in Japanese (日本語).
 ## Session Status (2026-01-14)
 
 ### Completed
-- ✅ Firebaseデプロイ成功（サービスアカウント設定完了）
 - ✅ **PDF結合機能の実装（Phase 33完了）**
   - ファイルメニューに「PDFを追加」ボタン追加
   - 複数PDFの選択に対応（`multiple`属性）
   - 既存ページの末尾にPDFを追加する`addPDF()`メソッド実装
-  - 変更ファイル:
-    - `index.html` - ボタンUI追加
-    - `src/types/index.ts` - `btnAddPdf`, `pdfAddInput`, `addPDF()`追加
-    - `src/main.ts` - `addPDF()`実装、`pdfAddInput`の動的生成
-    - `src/managers/EventManager.ts` - イベントバインディング追加
-- ✅ デプロイ完了: https://pdfeditor-study.web.app
+- ✅ **カスタムスラッシュコマンド `/finish` の作成**
+  - 作業終了時のドキュメント更新・Git操作を自動化
+  - ドキュメント整合性チェック機能を追加
+- ✅ **ドキュメント大幅更新（実装との整合性確保）**
+  - `requirements.md`: F-036〜F-057 追加（22機能）
+  - `design.md`: Manager Pattern アーキテクチャ図追加、型定義更新
+- ✅ **PDF結合バグ修正（重要）**
+  - 問題: ファイルAにファイルBを追加した際、ファイルBのページがファイルAの内容を表示
+  - 原因: `RenderManager.renderPdfPage()` が `this.state.originalPdfBytes` を使用
+  - 修正: `pageData.pdfBytes` を使用するように変更
+- ✅ **モデル使用ガイドライン追加**
+  - Sonnet/Opus使い分け指針をCLAUDE.mdに追記
+- ✅ **Git push & デプロイ完了**
+  - https://pdfeditor-study.web.app
 
 ### PDF結合の使い方
 1. 「開く」で最初のPDFを読み込む
