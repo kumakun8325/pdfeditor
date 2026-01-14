@@ -124,6 +124,12 @@ export class EventManager {
             this.app.toggleTheme();
         });
 
+        // CMYK切り替え
+        this.elements.cmykModeToggle.addEventListener('change', (e) => {
+            const isChecked = (e.target as HTMLInputElement).checked;
+            this.app.state.exportOptions.colorSpace = isChecked ? 'cmyk' : 'rgb';
+        });
+
         // テキスト追加
         this.elements.btnAddText.addEventListener('click', () => {
             this.app.openTextModal();

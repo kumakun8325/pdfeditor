@@ -1,8 +1,9 @@
 import { saveAs } from 'file-saver';
-import { PDFDocument, degrees, rgb, StandardFonts } from 'pdf-lib';
+import { PDFDocument, degrees, rgb, cmyk, StandardFonts } from 'pdf-lib';
 import { PDFService } from './services/PDFService';
 import { ImageService } from './services/ImageService';
 import { KeyboardService } from './services/KeyboardService';
+import { ColorService } from './services/ColorService';
 import { UndoManager } from './managers/UndoManager';
 import { AnnotationManager } from './managers/AnnotationManager';
 import { PageManager } from './managers/PageManager';
@@ -27,6 +28,9 @@ export class PDFEditorApp implements AppAction {
         isLoading: false,
         isDarkMode: false,
         originalPdfBytes: null,
+        exportOptions: {
+            colorSpace: 'rgb', // デフォルトはRGB
+        },
     };
 
     private pdfService: PDFService;
@@ -515,6 +519,8 @@ export class PDFEditorApp implements AppAction {
             btnMobileMenu: document.getElementById('btn-mobile-menu') as HTMLButtonElement,
             sidebar: document.getElementById('sidebar') as HTMLElement,
             sidebarOverlay: document.getElementById('sidebar-overlay') as HTMLDivElement,
+            // CMYK
+            cmykModeToggle: document.getElementById('cmyk-mode-toggle') as HTMLInputElement,
         };
     }
 
@@ -2146,20 +2152,62 @@ export class PDFEditorApp implements AppAction {
                 // テキスト注釈を埋め込む
                 if (pdfPage && page.textAnnotations && page.textAnnotations.length > 0) {
                     const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+                    const isCmyk = this.state.exportOptions.colorSpace === 'cmyk';
+
                     for (const annotation of page.textAnnotations) {
-                        // Hex色をRGBに変換
-                        const hex = annotation.color.replace('#', '');
-                        const r = parseInt(hex.substring(0, 2), 16) / 255;
-                        const g = parseInt(hex.substring(2, 4), 16) / 255;
-                        const b = parseInt(hex.substring(4, 6), 16) / 255;
+                        let textColor;
+
+                        if (isCmyk) {
+                            // CMYK変換
+                            const [c, m, y, k] = ColorService.hexToCmyk(annotation.color);
+                            textColor = cmyk(c, m, y, k);
+                        } else {
+                            // RGB変換（従来通り）
+                            const hex = annotation.color.replace('#', '');
+                            const r = parseInt(hex.substring(0, 2), 16) / 255;
+                            const g = parseInt(hex.substring(2, 4), 16) / 255;
+                            const b = parseInt(hex.substring(4, 6), 16) / 255;
+                            textColor = rgb(r, g, b);
+                        }
 
                         pdfPage.drawText(annotation.text, {
                             x: annotation.x,
                             y: annotation.y,
                             size: annotation.fontSize,
                             font,
-                            color: rgb(r, g, b),
+                            color: textColor,
                             rotate: degrees(annotation.rotation || 0),
+                        });
+                    }
+                }
+
+                // ハイライト注釈を埋め込む
+                if (pdfPage && page.highlightAnnotations && page.highlightAnnotations.length > 0) {
+                    const isCmyk = this.state.exportOptions.colorSpace === 'cmyk';
+
+                    for (const annotation of page.highlightAnnotations) {
+                        let highlightColor;
+
+                        if (isCmyk) {
+                            // CMYK変換
+                            const [c, m, y, k] = ColorService.hexToCmyk(annotation.color);
+                            highlightColor = cmyk(c, m, y, k);
+                        } else {
+                            // RGB変換
+                            const hex = annotation.color.replace('#', '');
+                            const r = parseInt(hex.substring(0, 2), 16) / 255;
+                            const g = parseInt(hex.substring(2, 4), 16) / 255;
+                            const b = parseInt(hex.substring(4, 6), 16) / 255;
+                            highlightColor = rgb(r, g, b);
+                        }
+
+                        pdfPage.drawRectangle({
+                            x: annotation.x,
+                            y: annotation.y,
+                            width: annotation.width,
+                            height: annotation.height,
+                            color: highlightColor,
+                            opacity: 0.3,
                         });
                     }
                 }
