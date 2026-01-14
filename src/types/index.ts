@@ -219,6 +219,11 @@ export interface UIElements {
     btnHelp: HTMLButtonElement;
     helpModal: HTMLDivElement;
     helpModalClose: HTMLButtonElement;
+
+    // モバイル
+    btnMobileMenu: HTMLButtonElement;
+    sidebar: HTMLElement;
+    sidebarOverlay: HTMLDivElement;
 }
 
 
@@ -285,4 +290,11 @@ export interface AppAction {
     handleCopy(): void;
     handlePaste(): void;
     deleteSelectedAnnotation(): void;
+
+    // Mobile sidebar
+    toggleSidebar(): void;
+    closeSidebar(): void;
+
+    // Touch/Pinch zoom
+    handlePinchZoom(scale: number, centerX: number, centerY: number): void;
 }
