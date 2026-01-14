@@ -920,3 +920,99 @@ class PageManager {
 - **モバイルファースト**: タッチ操作、レスポンシブUI対応
 - **Undo/Redo完備**: すべての操作がUndoManager経由で記録される
 - **型安全性**: TypeScriptによる厳格な型定義
+
+---
+
+## 16. CMYK変換機能
+
+商業印刷に必要なCMYKカラースペースへの変換機能を提供する。
+
+### 16.1 アーキテクチャ
+
+```mermaid
+graph LR
+    A[RGB画像/注釈] --> B[ColorService]
+    B --> C[CMYK値]
+    C --> D[pdf-lib cmyk()]
+    D --> E[CMYK PDF出力]
+
+    B --> F[CMYK→RGBシミュレート]
+    F --> G[Canvas描画プレビュー]
+```
+
+### 16.2 ColorService
+
+RGB↔CMYK変換を担当するサービスクラス。
+
+```typescript
+class ColorService {
+    // RGB (0-255) → CMYK (0-1)
+    static rgbToCmyk(r: number, g: number, b: number): [number, number, number, number];
+
+    // CMYK (0-1) → RGB (0-255) - プレビュー用
+    static cmykToRgb(c: number, m: number, y: number, k: number): [number, number, number];
+
+    // HEX文字列 → CMYK
+    static hexToCmyk(hex: string): [number, number, number, number];
+
+    // CMYK → HEX文字列
+    static cmykToHex(c: number, m: number, y: number, k: number): string;
+
+    // ガマット警告判定
+    static isOutOfGamut(r: number, g: number, b: number): boolean;
+}
+```
+
+**依存ライブラリ**: `color-convert` (RGB↔CMYK変換)
+
+### 16.3 CMYK変換のフロー
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant App as PDFEditorApp
+    participant ColorService
+    participant pdfLib as pdf-lib
+
+    User->>App: CMYKモードでPDF保存
+    App->>App: 各注釈をループ
+    loop 各テキスト/ハイライト注釈
+        App->>ColorService: hexToCmyk(annotationColor)
+        ColorService-->>App: [c, m, y, k]
+        App->>pdfLib: page.drawText({color: cmyk(c,m,y,k)})
+    end
+    App-->>User: CMYK PDFをダウンロード
+```
+
+### 16.4 UI
+
+**CMYKモード切り替え**: ファイルメニューのドロップダウン内にチェックボックスを配置。
+
+```html
+<label class="dropdown-item dropdown-item-checkbox">
+    <input type="checkbox" id="cmyk-mode-toggle">
+    <span>CMYKモード (印刷用)</span>
+</label>
+```
+
+### 16.5 制約事項
+
+| 項目 | 制約 |
+|------|------|
+| **画像のCMYK変換** | Canvas経由でラスタライズが必要（品質低下の可能性） |
+| **ブラウザプレビュー** | RGBシミュレートのみ（真のCMYKプレビューは不可） |
+| **ICCプロファイル** | 将来対応（現時点では固定変換式） |
+
+### 16.6 技術スタック
+
+| コンポーネント | 技術 |
+|----------------|------|
+| **色変換** | color-convert (RGB↔CMYK) |
+| **PDF出力** | pdf-lib の `cmyk()` 関数 |
+| **UI** | ネイティブHTML `<input type="checkbox">` |
+
+### 16.7 将来の拡張
+
+- ICCプロファイル対応（Phase 36以降で検討）
+- ガマット警告のビジュアル表示
+- CMYKプレビューの精度向上

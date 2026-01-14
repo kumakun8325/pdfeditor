@@ -75,6 +75,18 @@ export interface PageData {
 }
 
 /**
+ * PDF出力オプション
+ */
+export interface ExportOptions {
+    /** カラースペース: RGB または CMYK */
+    colorSpace: 'rgb' | 'cmyk';
+    /** トンボを含める（将来のPhase 38用） */
+    includeTrimMarks?: boolean;
+    /** 塗り足し（mm） */
+    bleed?: number;
+}
+
+/**
  * アプリケーション状態
  */
 export interface AppState {
@@ -90,6 +102,8 @@ export interface AppState {
     isDarkMode: boolean;
     /** 元PDFのバイトデータ */
     originalPdfBytes: Uint8Array | null;
+    /** PDF出力オプション */
+    exportOptions: ExportOptions;
 }
 
 /**
@@ -224,6 +238,9 @@ export interface UIElements {
     btnMobileMenu: HTMLButtonElement;
     sidebar: HTMLElement;
     sidebarOverlay: HTMLDivElement;
+
+    // CMYK切り替え
+    cmykModeToggle: HTMLInputElement;
 }
 
 
