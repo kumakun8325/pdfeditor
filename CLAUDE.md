@@ -59,6 +59,39 @@ App state is held in `PDFEditorApp.state` (type: `AppState`). Key state properti
 - **Canvas coordinate system**: Annotations use PDF coordinates (origin bottom-left), converted on render.
 - **Undo system**: `UndoAction` union type in `src/types/index.ts` defines all undoable operations.
 
+## Model Usage Guidelines
+
+このプロジェクトでは、タスクの種類に応じて適切なモデルを使用してください。
+
+### Use Sonnet (Default) - claude-sonnet-4-5
+**コスト効率が重要な作業に使用**
+
+- ✅ コード解析・調査（Grep, Read, Glob）
+- ✅ ドキュメント更新（requirements.md, design.md等）
+- ✅ Git操作（commit, push）
+- ✅ ビルド・デプロイ作業
+- ✅ `/finish` コマンド実行
+- ✅ 簡単なバグ修正（1-2行の変更）
+- ✅ Exploreエージェントでの調査
+
+### Use Opus - claude-opus-4-5
+**複雑な思考が必要な作業に使用**
+
+- 🎯 新機能の実装
+- 🎯 複雑なバグ修正
+- 🎯 リファクタリング
+- 🎯 複雑なロジックの実装
+- 🎯 アーキテクチャ設計
+
+### 切り替え方法
+
+```bash
+/model sonnet   # Sonnetに切り替え
+/model opus     # Opusに切り替え
+```
+
+**重要**: Claude Codeは自動的にモデルを切り替えないため、コーディング作業を開始する前に手動で `/model opus` を実行してください。
+
 ## UI Language
 
 The interface is in Japanese (日本語).
