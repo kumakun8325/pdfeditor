@@ -53,16 +53,32 @@
     - デプロイ成功: https://pdfeditor-study.web.app
 - **カスタムスラッシュコマンドの作成**
     - `/finish` コマンド作成（作業終了時のドキュメント更新・コミット処理）
+    - ドキュメント整合性チェック（Step 0）を追加
+- **ドキュメント大幅更新（実装との整合性確保）**
+    - `requirements.md`: F-036〜F-057 追加（複数ページ選択、ズーム、コンテキストメニュー、Undo/Redo、セッション保存、ヘルプ、注釈高度操作）
+    - `design.md`: Manager Pattern アーキテクチャ図追加、型定義更新（AppState, TextAnnotation, UndoAction拡張）、StorageService追記
+- **PDF結合バグ修正（重要）**
+    - 問題: ファイルAにファイルBを追加した際、ファイルBのページがファイルAの内容を表示
+    - 原因: `RenderManager.renderPdfPage()` が `this.state.originalPdfBytes` を使用（常に最初のPDF）
+    - 修正: `pageData.pdfBytes` を使用するように変更（各ページ固有のPDFデータ）
+    - デプロイ完了
+- **モデル使用ガイドライン追加**
+    - `CLAUDE.md` にSonnet/Opus使い分け指針を追記
+    - Sonnet: 解析、ドキュメント、Git、デプロイ
+    - Opus: 新機能実装、複雑なバグ修正、リファクタリング
 
 ### 変更ファイル
 - `index.html` - 「PDFを追加」ボタンUI追加
 - `src/types/index.ts` - `btnAddPdf`, `pdfAddInput`, `addPDF()` 型追加
 - `src/main.ts` - `addPDF()` メソッド実装、`pdfAddInput` 動的生成
 - `src/managers/EventManager.ts` - PDF追加イベントバインディング
+- `src/managers/RenderManager.ts` - PDF結合バグ修正（`pageData.pdfBytes` 使用）
 - `docs/tasks.md` - Phase 33完了
-- `docs/requirements.md` - F-034, F-035 追加
-- `docs/design.md` - addPDF設計追記
-- `.claude/commands/finish.md` - カスタムコマンド作成
+- `docs/requirements.md` - F-034, F-035 追加、F-036〜F-057 追加（22機能）
+- `docs/design.md` - Manager Pattern追加、型定義更新、StorageService追記
+- `.claude/commands/finish.md` - カスタムコマンド作成、整合性チェック追加
+- `CLAUDE.md` - モデル使用ガイドライン追加
+- `docs/SESSION_LOG.md` - 本セッションログ更新
 
 ### 次回TODO
 - Phase 34: スマホ対応（タッチ操作）
