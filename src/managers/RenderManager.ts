@@ -238,7 +238,7 @@ export class RenderManager {
     }
 
     private async renderPdfPage(pageData: PageData, ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement, renderId: number): Promise<void> {
-        if (!this.state.originalPdfBytes) return;
+        if (!pageData.pdfBytes) return;
 
         const key = this.getCacheKey(pageData);
 
@@ -258,7 +258,7 @@ export class RenderManager {
 
         // 2. キャッシュミス - レンダリング実行
         const loadingTask = pdfjsLib.getDocument({
-            data: this.state.originalPdfBytes.slice(0),
+            data: pageData.pdfBytes.slice(0),
             cMapUrl: 'https://unpkg.com/pdfjs-dist@3.11.174/cmaps/',
             cMapPacked: true,
         });
