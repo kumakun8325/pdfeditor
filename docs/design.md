@@ -209,29 +209,43 @@ type UndoAction =
 
 ### 4.1 PDFService
 
+PDFページの読み込み、レンダリング、エクスポートを管理するサービス。
+
+**注意**: `addPDF()`メソッドは設計上PDFServiceに属するが、実装は`PDFEditorApp.addPDF()` (main.ts:570-598)に配置されている。
+
 ```typescript
 class PDFService {
     // PDF読み込み（新規）
     async loadPDF(file: File): Promise<LoadResult>;
 
-    // PDF追加（結合用 - 既存ページの末尾に追加）
-    async addPDF(file: File): Promise<void>;
-    
     // PDFからページ抽出（ArrayBufferコピー対策済み）
     async extractPages(pdfBytes: Uint8Array): Promise<PageData[]>;
-    
+
     // サムネイル生成
     async renderThumbnail(page: PDFPageProxy, scale: number): Promise<string>;
-    
-    // ページをCanvasにレンダリング
+
+    // ページをCanvasにレンダリング（統合メソッド）
     async renderToCanvas(canvas: HTMLCanvasElement, pageData: PageData): Promise<void>;
-    
+
+    // PDFページをCanvasに描画（内部実装）
+    private async renderPdfPage(canvas: HTMLCanvasElement, pageData: PageData): Promise<void>;
+
+    // 画像ページをCanvasに描画（内部実装）
+    private async renderImageToCanvas(canvas: HTMLCanvasElement, pageData: PageData): Promise<void>;
+
+    // 画像をCanvasにフィットさせて描画（センタリング処理）
+    private drawImageFitToCanvas(
+        canvas: HTMLCanvasElement,
+        img: HTMLImageElement,
+        pageData: PageData
+    ): void;
+
     // ページ削除
     removePageAt(pages: PageData[], index: number): PageData[];
-    
+
     // ページ挿入
     insertPageAt(pages: PageData[], page: PageData, index: number): PageData[];
-    
+
     // ページ並べ替え
     reorderPages(pages: PageData[], fromIndex: number, toIndex: number): PageData[];
 
@@ -251,6 +265,8 @@ class PDFService {
 
 ### 4.2 ImageService
 
+画像ファイルの処理とPDF埋め込みを管理するサービス。
+
 ```typescript
 class ImageService {
     // 画像をPageDataに変換（ページサイズにフィット）
@@ -259,9 +275,9 @@ class ImageService {
         referenceWidth: number,
         referenceHeight: number
     ): Promise<PageData>;
-    
-    // 画像をPDFページとして埋め込む
-    async embedImageToPdf(pdfDoc: PDFDocument, pageData: PageData): Promise<void>;
+
+    // 画像をPDFページとして埋め込む（PDFPageを返す）
+    async embedImageToPdf(pdfDoc: PDFDocument, pageData: PageData): Promise<PDFPage>;
 }
 ```
 
@@ -285,6 +301,8 @@ class KeyboardService {
 
 ### 4.4 StorageService
 
+IndexedDBを使用したセッション永続化サービス。アプリ状態を保存・復元する。
+
 ```typescript
 class StorageService {
     // セッション状態の保存（IndexedDB）
@@ -295,6 +313,184 @@ class StorageService {
 
     // セッションのクリア
     async clearState(): Promise<void>;
+}
+```
+
+### 4.5 RenderManager
+
+Canvasレンダリング、ズーム制御、ページキャッシュを管理するManager。
+
+#### 4.5.1 ページキャッシュ機構
+
+RenderManagerは描画済みのページをキャッシュし、再描画時のパフォーマンスを最適化する。
+
+```typescript
+class RenderManager {
+    private pageCache: Map<string, HTMLCanvasElement> = new Map();
+
+    // キャッシュキー生成（pageId + rotation）
+    private getCacheKey(pageId: string, rotation: number): string;
+
+    // キャッシュをクリア
+    clearCache(): void;
+
+    // キャッシュされた背景を使って再描画
+    redrawWithCachedBackground(): void;
+
+    // ビューポートに最適なスケール計算
+    calculateFitScale(): number;
+
+    // PDFページをレンダリング
+    private async renderPdfPage(pageData: PageData, canvas: HTMLCanvasElement, scale: number): Promise<void>;
+
+    // 画像ページをレンダリング
+    private async renderImagePage(pageData: PageData, canvas: HTMLCanvasElement, scale: number): Promise<void>;
+}
+```
+
+**キャッシュ戦略**:
+- キャッシュキー: `${pageId}_${rotation}`
+- キャッシュ無効化タイミング: ページ回転時、ページ削除時
+- 注釈は毎回再描画（キャッシュには含まれない）
+
+### 4.6 SelectionManager
+
+複数ページ選択、範囲選択を管理するManager。
+
+```typescript
+class SelectionManager {
+    // 単一ページを選択
+    select(pageIndex: number, multiSelect: boolean = false): void;
+
+    // 範囲選択（Shift+Click）
+    selectRange(startIndex: number, endIndex: number): void;
+
+    // 全ページ選択
+    selectAll(): void;
+
+    // 選択をクリア
+    clear(): void;
+
+    // 指定ページが選択されているか判定
+    isSelected(pageIndex: number): boolean;
+}
+```
+
+**選択動作**:
+- 通常クリック: 単一選択
+- Ctrl/Cmd + クリック: 複数選択（トグル）
+- Shift + クリック: 範囲選択
+
+### 4.7 AnnotationManager
+
+テキスト・ハイライト注釈の描画、ヒット判定、座標変換を管理するManager。
+
+#### 4.7.1 座標変換
+
+PDFの座標系（左下原点）とCanvasの座標系（左上原点）を変換する。
+
+```typescript
+class AnnotationManager {
+    // PDF座標系 → Canvas座標系
+    private toCanvasPoint(
+        pdfX: number,
+        pdfY: number,
+        pageHeight: number,
+        scale: number
+    ): { x: number; y: number };
+
+    // Canvas座標系 → PDF座標系
+    private toPdfPoint(
+        canvasX: number,
+        canvasY: number,
+        pageHeight: number,
+        scale: number
+    ): { x: number; y: number };
+}
+```
+
+#### 4.7.2 ヒット判定
+
+マウス/タッチ座標から注釈・ハンドルのヒット判定を行う。
+
+```typescript
+class AnnotationManager {
+    // テキスト注釈のヒット判定
+    private hitTestText(
+        annotation: TextAnnotation,
+        x: number,
+        y: number,
+        scale: number
+    ): boolean;
+
+    // テキストのリサイズハンドルヒット判定
+    private hitTestTextHandle(
+        annotation: TextAnnotation,
+        x: number,
+        y: number,
+        scale: number
+    ): boolean;
+
+    // テキストの回転ハンドルヒット判定
+    private hitTestTextRotationHandle(
+        annotation: TextAnnotation,
+        x: number,
+        y: number,
+        scale: number
+    ): boolean;
+
+    // ハイライトのヒット判定
+    private hitTestHighlight(
+        annotation: HighlightAnnotation,
+        x: number,
+        y: number,
+        scale: number
+    ): boolean;
+
+    // ハイライトのリサイズハンドルヒット判定
+    private hitTestHighlightHandle(
+        annotation: HighlightAnnotation,
+        x: number,
+        y: number,
+        scale: number
+    ): 'topLeft' | 'topRight' | 'bottomLeft' | 'bottomRight' | null;
+}
+```
+
+#### 4.7.3 描画メソッド
+
+```typescript
+class AnnotationManager {
+    // すべての注釈を描画
+    drawAnnotations(
+        ctx: CanvasRenderingContext2D,
+        pageData: PageData,
+        scale: number
+    ): void;
+
+    // ハイライト注釈を描画
+    private drawHighlight(
+        ctx: CanvasRenderingContext2D,
+        annotation: HighlightAnnotation,
+        scale: number,
+        isSelected: boolean
+    ): void;
+
+    // テキスト注釈を描画
+    private drawText(
+        ctx: CanvasRenderingContext2D,
+        annotation: TextAnnotation,
+        scale: number,
+        isSelected: boolean
+    ): void;
+
+    // リサイズ/回転ハンドルを描画
+    private drawHandle(
+        ctx: CanvasRenderingContext2D,
+        x: number,
+        y: number,
+        color: string
+    ): void;
 }
 ```
 
@@ -501,3 +697,226 @@ copy /b document.pdf.001+document.pdf.002+document.pdf.003 document.pdf
 ```powershell
 Get-Content document.pdf.* -Encoding Byte -ReadCount 0 | Set-Content document.pdf -Encoding Byte
 ```
+
+---
+
+## 12. モバイル対応
+
+### 12.1 タッチイベント処理
+
+EventManagerがモバイルデバイスでのタッチ操作を管理する。
+
+```typescript
+class EventManager {
+    // モバイルサイドバーの初期化
+    private setupMobileSidebar(): void;
+
+    // サイドバーのスワイプジェスチャ
+    private setupSidebarSwipe(): void;
+
+    // タッチイベントハンドラ
+    private setupTouchEvents(): void;
+
+    // タッチによるパン操作
+    private setupTouchPanning(): void;
+
+    // 2点タッチ間の距離計算（ピンチズーム用）
+    private getTouchDistance(touch1: Touch, touch2: Touch): number;
+
+    // 2点タッチの中心座標計算
+    private getTouchCenter(touch1: Touch, touch2: Touch): { x: number; y: number };
+}
+```
+
+### 12.2 実装されたジェスチャ
+
+| ジェスチャ | 動作 |
+|-----------|------|
+| **シングルタップ** | ページ選択、注釈選択 |
+| **ロングプレス** | コンテキストメニュー表示 |
+| **ピンチイン/アウト** | ズームイン/ズームアウト |
+| **2本指スワイプ** | キャンバスパン（移動） |
+| **サイドバースワイプ** | サイドバーの開閉 |
+| **ドラッグ&ドロップ** | ページ並べ替え |
+
+### 12.3 レスポンシブUI
+
+画面幅に応じてレイアウトが変化する。
+
+```css
+/* モバイルビュー (< 768px) */
+@media (max-width: 768px) {
+    .sidebar {
+        position: fixed;
+        transform: translateX(-100%);
+        transition: transform 0.3s;
+    }
+
+    .sidebar.open {
+        transform: translateX(0);
+    }
+
+    .mobile-menu-button {
+        display: block;
+    }
+}
+```
+
+**UI調整**:
+- サイドバーは初期状態で非表示
+- ハンバーガーメニューでトグル
+- ツールバーボタンのサイズを大きく（タップしやすく）
+- 注釈のハンドルサイズを大きく（12px → 16px）
+
+### 12.4 モバイル固有の型定義
+
+```typescript
+interface UIElements {
+    // ... 既存のプロパティ
+
+    // モバイル用UI
+    mobileMenuButton?: HTMLButtonElement;
+    mobileOverlay?: HTMLDivElement;
+}
+```
+
+---
+
+## 13. 型定義補足
+
+### 13.1 UIElements
+
+アプリケーション内で使用されるすべてのUI要素への参照。
+
+```typescript
+interface UIElements {
+    // コンテナ
+    sidebar: HTMLElement;
+    mainView: HTMLElement;
+    toolbar: HTMLElement;
+
+    // キャンバス
+    canvas: HTMLCanvasElement;
+
+    // サムネイルリスト
+    thumbnailList: HTMLElement;
+
+    // ファイル入力
+    fileInput: HTMLInputElement;
+
+    // ツールバーボタン
+    openButton: HTMLButtonElement;
+    saveButton: HTMLButtonElement;
+    splitButton: HTMLButtonElement;
+    addPdfButton: HTMLButtonElement;
+    exportImageButton: HTMLButtonElement;
+    exportAllButton: HTMLButtonElement;
+    themeToggleButton: HTMLButtonElement;
+    helpButton: HTMLButtonElement;
+
+    // 注釈コントロール
+    addTextButton: HTMLButtonElement;
+    addHighlightButton: HTMLButtonElement;
+
+    // ドロップダウン
+    pageDropdown: HTMLElement;
+
+    // モバイルUI
+    mobileMenuButton?: HTMLButtonElement;
+    mobileOverlay?: HTMLDivElement;
+}
+```
+
+### 13.2 MenuItem
+
+コンテキストメニューの項目定義。
+
+```typescript
+interface MenuItem {
+    label: string;           // 表示ラベル
+    icon?: string;          // SVGアイコン（オプション）
+    action: () => void;     // クリック時のコールバック
+    separator?: boolean;    // 区切り線
+    disabled?: boolean;     // 無効化フラグ
+}
+```
+
+### 13.3 AppAction
+
+アプリケーション全体で発生するアクションの型。
+
+```typescript
+type AppAction =
+    | 'openFile'
+    | 'saveFile'
+    | 'addPdf'
+    | 'deletePage'
+    | 'duplicatePage'
+    | 'rotatePage'
+    | 'movePage'
+    | 'addText'
+    | 'addHighlight'
+    | 'deleteAnnotation'
+    | 'undo'
+    | 'redo'
+    | 'selectAll'
+    | 'clearSelection'
+    | 'exportImage'
+    | 'exportAllImages'
+    | 'splitPdf'
+    | 'toggleTheme'
+    | 'showHelp';
+```
+
+---
+
+## 14. PageManager詳細
+
+PageManagerは複数ページのバッチ操作をサポートする。
+
+```typescript
+class PageManager {
+    // 単一ページ削除
+    deletePage(index: number): void;
+
+    // 複数ページ削除（バッチ）
+    deletePages(indices: number[]): void;
+
+    // ページ回転
+    rotatePage(index: number, degrees: number): void;
+
+    // 複数ページ回転（バッチ）
+    rotatePages(indices: number[], degrees: number): void;
+
+    // ページ複製
+    duplicatePage(index: number): void;
+
+    // 複数ページ複製（バッチ）
+    duplicatePages(indices: number[]): void;
+
+    // 複数ページの移動
+    movePages(fromIndices: number[], toIndex: number): void;
+
+    // 削除後の選択状態復元
+    private restoreSelectionAfterDelete(deletedIndices: number[]): void;
+}
+```
+
+**バッチ操作の特徴**:
+- 複数選択状態での操作を一度に実行
+- Undo/Redoは1回の操作として記録
+- 選択状態は操作後も維持（可能な限り）
+
+---
+
+## 15. まとめ
+
+本アプリケーションは**Manager Pattern**を採用し、各機能領域を疎結合に保つことで保守性を高めている。
+
+**設計の特徴**:
+- **クライアント完結**: すべての処理がブラウザ内で完結（プライバシー保護）
+- **イベント駆動**: EventManagerが各Managerを協調動作させる
+- **キャッシュ最適化**: RenderManagerがページキャッシュでパフォーマンス向上
+- **モバイルファースト**: タッチ操作、レスポンシブUI対応
+- **Undo/Redo完備**: すべての操作がUndoManager経由で記録される
+- **型安全性**: TypeScriptによる厳格な型定義

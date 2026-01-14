@@ -1,0 +1,20 @@
+{
+  "readAllowance": ["*"],
+  "writeAllowance": [
+    "src/**",
+    "public/**",
+    "*.md",
+    ".claude/**"
+  ],
+  "executeAllowance": [
+    "./bin/issue-start.sh",
+    "./bin/lint-fix.sh",
+    "./bin/finish.sh",
+    "npm run build",
+    "npm run dev",
+    "firebase deploy --only hosting",
+    "gh",
+    "git",
+    "npx"
+  ]
+}
