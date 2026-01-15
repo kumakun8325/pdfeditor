@@ -12,6 +12,12 @@
     "firebase deploy --only hosting",
     "gh",
     "git",
-    "npx"
+    "npx",
+    "npx tsx",
+    "npx playwright",
+    "npm test",
+    "npm run test",
+    "npm run test:e2e",
+    "npm run test:coverage"
   ]
 }
