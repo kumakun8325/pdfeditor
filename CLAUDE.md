@@ -24,6 +24,6 @@
 4. **Consistency**: Ensure implementation and documentation are always in sync.
 
 ## CRITICAL OPERATIONAL RULES
-1. **Model Strategy**: Use **Sonnet** (4.5) for analysis, docs, and minor fixes. Use **Opus** (4.5) for core logic, refactoring, and new features.
-2. **Firebase Auth**: NEVER use `firebase login`. Always use the Service Account Key via env var.
-3. **Workflow**: Refer to `.claude/rules/workflow.md` for Issue/PR procedures.
+1. **Firebase Auth**: NEVER use `firebase login`. Always use the Service Account Key via env var.
+2. **Workflow**: Refer to `.claude/rules/workflow.md` for Issue/PR procedures.
+3. **Model Strategy**: See `.claude/rules/model.md` for Sonnet/Opus usage guidelines.
