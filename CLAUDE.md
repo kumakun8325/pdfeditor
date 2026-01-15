@@ -19,7 +19,7 @@
 
 ## DOCUMENTATION RULES (Crucial)
 1. **Stability**: Keep `CLAUDE.md` stable. Do NOT add session-specific progress or deep technical details here.
-2. **Dynamic Info**: Update `PROGRESS.md` for session status, completed tasks, and next steps.
+2. **Dynamic Info**: Update `docs/SESSION_LOG.md` for session status, completed tasks, and next steps.
 3. **Deep Tech**: Update `.claude/rules/architecture.md` or `design.md` for changes in logic, class structure, or types.
 4. **Consistency**: Ensure implementation and documentation are always in sync.
 

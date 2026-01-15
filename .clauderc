@@ -1,10 +1,7 @@
 {
   "readAllowance": ["*"],
   "writeAllowance": [
-    "src/**",
-    "public/**",
-    "*.md",
-    ".claude/**"
+    "**/*"
   ],
   "executeAllowance": [
     "./bin/issue-start.sh",
