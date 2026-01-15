@@ -92,12 +92,14 @@
 - `CLAUDE.md` (更新)
 
 ### 次回TODO
-- Claude で `/start` を実行し task40 (自動テスト) を実装
-- 実装完了後、Antigravity で `/verify` を実行
+- E2Eテストの安定化調整
+- Phase 41 (PDF分割) の計画と実装
+- `.clauderc` の調整（npxコマンド許可等）
 
 ### ブランチ状態
 - ブランチ名: `main`
-- 状態: 分業ワークフロー構築完了、task40 引き継ぎ準備完了
+- 状態: Phase 40 完了 (Unit Test Pass)
+
 
 ---
 
