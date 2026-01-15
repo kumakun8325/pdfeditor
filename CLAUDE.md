@@ -8,7 +8,7 @@
 ## WHY: Core Philosophy
 - **Client-Side Only**: Privacy-first in-browser processing. No backend required.
 - **Manager Pattern**: Each feature has a manager. `PDFEditorApp` (main.ts) orchestrates them.
-- **Issue-Driven**: Every change must start with a GitHub Issue and PR via MCP.
+- **Issue-Driven**: New features/bug fixes **MUST start with `gh issue create`**. See `.claude/rules/workflow.md`.
 
 ## HOW: Essential Commands
 - Dev/Build: `npm run dev` / `npm run build`
