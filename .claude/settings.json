@@ -1,0 +1,19 @@
+{
+    "permissions": {
+        "allow": [
+            "Bash(./bin/issue-start.sh)",
+            "Bash(./bin/lint-fix.sh)",
+            "Bash(./bin/finish.sh)",
+            "Bash(npm run build)",
+            "Bash(npm run dev)",
+            "Bash(npm run lint)",
+            "Bash(firebase deploy --only hosting)",
+            "Bash(gh:*)",
+            "Bash(git:*)",
+            "Bash(npx:*)",
+            "Bash(npm test)",
+            "Bash(npm run test)",
+            "Bash(npm run test:*)"
+        ]
+    }
+}
