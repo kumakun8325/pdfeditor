@@ -1,19 +1,19 @@
-# Model Strategy (Claude Code 専用)
+# Model Strategy (Claude Code Only)
 
-Claude Code使用時のモデル使い分けガイドライン。
+Guidelines for choosing between Sonnet and Opus in Claude Code.
 
-## 推奨モデル
+## Recommended Models
 
-| タスク種別 | 推奨モデル | 理由 |
-|-----------|-----------|------|
-| 解析・調査 | Sonnet (4.5) | 高速、コスト効率 |
-| ドキュメント更新 | Sonnet (4.5) | 十分な品質 |
-| 軽微な修正 | Sonnet (4.5) | オーバースペック回避 |
-| 新機能実装 | Opus (4.5) | 複雑なロジック対応 |
-| リファクタリング | Opus (4.5) | 設計判断が必要 |
-| 複雑なバグ修正 | Opus (4.5) | 深い理解が必要 |
+| Task Type | Model | Reason |
+|-----------|-------|--------|
+| Analysis/Research | Sonnet (4.5) | Fast, cost-effective |
+| Documentation | Sonnet (4.5) | Sufficient quality |
+| Minor fixes | Sonnet (4.5) | Avoid overkill |
+| New features | Opus (4.5) | Complex logic |
+| Refactoring | Opus (4.5) | Design decisions |
+| Complex bugs | Opus (4.5) | Deep understanding |
 
-## 注意事項
+## Notes
 
-- Git操作、デプロイはどちらのモデルでも可
-- 迷った場合はSonnetで開始し、必要に応じてOpusに切り替え
+- Git ops, deploy: Either model works
+- When unsure: Start with Sonnet, switch to Opus if needed
