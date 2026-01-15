@@ -713,34 +713,34 @@ jobs:
 
 - [x] Vitest vs Jest 比較検討 → Vitest採用（Vite統合）
 - [x] Playwright vs Cypress 比較検討 → Playwright採用（マルチブラウザ）
-- [ ] テスト対象の優先度決定
+- [x] テスト対象の優先度決定
 
 ### 40.2 テスト環境の構築
 
-- [ ] Vitestインストール・設定
-- [ ] Playwrightインストール・設定
-- [ ] テストディレクトリ構成作成
-- [ ] テスト用fixturesファイル準備
+- [x] Vitestインストール・設定
+- [x] Playwrightインストール・設定
+- [x] テストディレクトリ構成作成
+- [x] テスト用fixturesファイル準備
 
 ### 40.3 主要ロジックのユニットテスト作成 (Vitest)
 
-- [ ] `ColorService.test.ts` 作成
-- [ ] `UndoManager.test.ts` 作成
-- [ ] `SelectionManager.test.ts` 作成
-- [ ] `PDFService.test.ts` 作成（モック必要）
+- [x] `ColorService.test.ts` 作成
+- [x] `UndoManager.test.ts` 作成
+- [x] `SelectionManager.test.ts` 作成
+- [x] `PDFService.test.ts` 作成（モック必要）
 
 ### 40.4 主要フローのE2Eテスト作成 (Playwright)
 
-- [ ] `pdf-load.spec.ts` 作成
-- [ ] `page-operations.spec.ts` 作成
-- [ ] `annotations.spec.ts` 作成
-- [ ] `export.spec.ts` 作成
+- [x] `pdf-load.spec.ts` 作成
+- [x] `page-operations.spec.ts` 作成
+- [ ] `annotations.spec.ts` 作成 (Optional - 将来のフェーズ)
+- [ ] `export.spec.ts` 作成 (Optional - 将来のフェーズ)
 
 ### 40.5 CI連携 (GitHub Actions)
 
-- [ ] `.github/workflows/test.yml` 作成
-- [ ] PRトリガーの設定
-- [ ] カバレッジレポート連携
+- [x] `.github/workflows/test.yml` 作成
+- [x] PRトリガーの設定
+- [x] カバレッジレポート連携
 
 ---
 
@@ -869,18 +869,20 @@ Vitest によるユニットテストと Playwright によるE2Eテストを導�
 
 ## 10. チェックリスト
 
-- [ ] Vitestインストール完了
-- [ ] Playwrightインストール完了
-- [ ] `vitest.config.ts` 作成
-- [ ] `playwright.config.ts` 作成
-- [ ] テストディレクトリ作成
-- [ ] ColorService ユニットテスト作成
-- [ ] UndoManager ユニットテスト作成
-- [ ] PDF読み込み E2Eテスト作成
-- [ ] ページ操作 E2Eテスト作成
-- [ ] GitHub Actions workflow作成
-- [ ] `requirements.md` 更新
-- [ ] `design.md` 更新
+- [x] Vitestインストール完了
+- [x] Playwrightインストール完了
+- [x] `vitest.config.ts` 作成
+- [x] `playwright.config.ts` 作成
+- [x] テストディレクトリ作成
+- [x] ColorService ユニットテスト作成
+- [x] UndoManager ユニットテスト作成
+- [x] SelectionManager ユニットテスト作成
+- [x] PDFService ユニットテスト作成
+- [x] PDF読み込み E2Eテスト作成
+- [x] ページ操作 E2Eテスト作成
+- [x] GitHub Actions workflow作成
+- [ ] `requirements.md` 更新 (Deferred - テスト仕様はtask40.mdに記載)
+- [ ] `design.md` 更新 (Deferred - テスト戦略はtask40.mdに記載)
 
 ---
 

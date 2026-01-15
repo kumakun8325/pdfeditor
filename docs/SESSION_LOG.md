@@ -4,6 +4,57 @@
 
 ---
 
+## 2026-01-15 (水) - Night Session
+
+### 実施内容
+- **Phase 40: 自動テストの導入 (実装完了)**
+    - Vitest環境構築（ユニットテスト）
+    - Playwright環境構築（E2Eテスト）
+    - 56個のユニットテスト作成（全てパス）
+    - E2Eテスト作成（PDF読み込み、ページ操作）
+    - GitHub Actions CI/CD設定
+    - テストフィクスチャ作成（sample.pdf, sample.png）
+
+### テストカバレッジ
+- **ColorService** (15 tests): RGB↔CMYK変換
+- **UndoManager** (11 tests): Undo/Redoスタック操作
+- **PDFService** (13 tests): ページ操作（削除、挿入、並び替え）
+- **SelectionManager** (17 tests): ページ選択ロジック
+- **E2E** (12 tests): PDF読み込み、ページ操作（削除、複製、回転、Undo/Redo）
+
+### 変更ファイル
+- `vitest.config.ts` (新規)
+- `playwright.config.ts` (新規)
+- `tests/unit/services/ColorService.test.ts` (新規)
+- `tests/unit/services/PDFService.test.ts` (新規)
+- `tests/unit/managers/UndoManager.test.ts` (新規)
+- `tests/unit/managers/SelectionManager.test.ts` (新規)
+- `tests/e2e/pdf-load.spec.ts` (新規)
+- `tests/e2e/page-operations.spec.ts` (新規)
+- `tests/fixtures/sample.pdf` (新規)
+- `tests/fixtures/sample.png` (新規)
+- `scripts/create-test-pdf.ts` (新規)
+- `scripts/create-test-png.ts` (新規)
+- `.github/workflows/test.yml` (新規)
+- `package.json` (test scripts追加)
+- `docs/handoff.md` (完了報告)
+- `docs/task40.md` (チェックリスト更新)
+
+### プルリクエスト
+- PR #6: feat: Add automated testing with Vitest and Playwright
+- Issue #5: Phase 40: 自動テストの導入
+- Branch: `feature/issue-5-automated-testing`
+
+### 次回TODO
+- Antigravity で `/verify` を実行してテストを検証
+- マージ後、次フェーズ（Phase 41）の計画
+
+### ブランチ状態
+- ブランチ名: `feature/issue-5-automated-testing`
+- 状態: 実装完了、PR作成済み、レビュー待ち
+
+---
+
 ## 2026-01-15 (水) - Evening Session
 
 ### 実施内容
