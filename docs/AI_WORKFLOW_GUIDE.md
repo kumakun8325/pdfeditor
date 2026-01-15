@@ -59,8 +59,10 @@ That's it. Claude reads `handoff.md` automatically.
 ### What Claude Does
 1. Reads `docs/handoff.md`
 2. Reads task document
-3. Creates feature branch
-4. Implements changes
+3. **Presents impact analysis and implementation plan**
+4. **Waits for user approval**
+5. Creates feature branch
+6. Implements changes + tests
 
 ---
 
@@ -72,11 +74,13 @@ That's it. Claude reads `handoff.md` automatically.
 ```
 
 ### What Claude Does
-1. Runs lint/build
-2. Updates `docs/handoff.md` → `READY_FOR_VERIFY`
-3. Fills "Claude → Antigravity" section
-4. Commits and pushes
-5. Creates PR
+1. Runs `/review` on changed files
+2. Runs `npm run test` (if tests exist)
+3. Runs lint/build
+4. Updates docs (requirements.md, design.md if needed)
+5. Updates `docs/handoff.md` → `READY_FOR_VERIFY`
+6. Commits and pushes
+7. Creates PR
 
 ---
 
