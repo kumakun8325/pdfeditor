@@ -23,6 +23,55 @@
 
 ---
 
+## 1.3 Current State Analysis
+
+### Existing Services (テスト対象)
+```
+src/services/
+├── ColorService.ts     # RGB↔CMYK変換 (90行) - staticメソッド
+├── ImageService.ts     # 画像エクスポート (4.9KB)
+├── KeyboardService.ts  # ショートカット (2.4KB)
+├── PDFService.ts       # PDF操作 (363行) - 主要テスト対象
+└── StorageService.ts   # LocalStorage (3.5KB)
+```
+
+### Existing Managers (テスト対象)
+```
+src/managers/
+├── UndoManager.ts       # Undo/Redoスタック (74行) - テスト容易
+├── SelectionManager.ts  # ページ選択 (106行) - State依存
+└── ... (15ファイル)
+```
+
+### Current package.json scripts
+```json
+{
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview"
+  }
+}
+```
+→ **test系スクリプトは存在しない** (新規追加が必要)
+
+### Key Methods to Test
+
+| Class | Method | Signature | Test Priority |
+|-------|--------|-----------|---------------|
+| `ColorService` | `rgbToCmyk` | `static rgbToCmyk(r, g, b): [c,m,y,k]` | High |
+| `ColorService` | `hexToCmyk` | `static hexToCmyk(hex): [c,m,y,k]` | High |
+| `PDFService` | `removePageAt` | `removePageAt(pages, index): PageData[]` | High |
+| `PDFService` | `insertPageAt` | `insertPageAt(pages, page, index): PageData[]` | High |
+| `PDFService` | `reorderPages` | `reorderPages(pages, from, to): PageData[]` | High |
+| `UndoManager` | `push` | `push(action): void` | High |
+| `UndoManager` | `popUndo` | `popUndo(): UndoAction \| undefined` | High |
+| `UndoManager` | `canUndo/canRedo` | `canUndo(): boolean` | Medium |
+| `SelectionManager` | `select` | `select(index, multiSelect): void` | Medium |
+| `SelectionManager` | `selectRange` | `selectRange(targetIndex): void` | Medium |
+
+---
+
 ## 2. 技術選定
 
 ### 2.1 フレームワーク比較
@@ -832,3 +881,93 @@ Vitest によるユニットテストと Playwright によるE2Eテストを導�
 - [ ] GitHub Actions workflow作成
 - [ ] `requirements.md` 更新
 - [ ] `design.md` 更新
+
+---
+
+## 11. Type Changes
+
+このタスクでは **型定義の変更は不要**。
+
+既存の型をそのまま使用:
+- `PageData` - ページデータ構造
+- `UndoAction` - Undo/Redoアクション型
+- `AppState` - アプリケーション状態
+
+---
+
+## 12. Edge Cases
+
+テストで考慮すべきエッジケース:
+
+### Unit Tests
+| Case | 対応 |
+|------|------|
+| ColorService: RGB値が範囲外 (e.g., -1, 256) | 境界値テスト追加 |
+| UndoManager: 空スタックでpopUndo() | undefined返却を検証 |
+| PDFService: 空配列でremovePageAt() | 空配列返却を検証 |
+| PDFService: 範囲外インデックス | エラーハンドリング確認 |
+
+### E2E Tests
+| Case | 対応 |
+|------|------|
+| PDF読み込み失敗 (破損ファイル) | エラートースト表示確認 |
+| 大きいPDF (100ページ超) | Phase 41で対応 (今回スコープ外) |
+| ネットワーク遅延 | 今回スコープ外 |
+
+---
+
+## 13. NOT in Scope
+
+以下はこのタスクに **含まない**:
+
+| 項目 | 理由 | 対応予定 |
+|------|------|---------|
+| パフォーマンステスト | 別タスクとして実施 | Phase 41 |
+| ビジュアルリグレッションテスト | 複雑・優先度低 | 未定 |
+| 統合テスト (Integration) | Unit + E2Eで十分カバー | 不要 |
+| モバイルブラウザテスト | Playwrightで追加可能だが初期スコープ外 | Phase 42 |
+| ImageService のテスト | Canvas操作が複雑、優先度低 | 任意 |
+| StorageService のテスト | 単純なLocalStorage操作、優先度低 | 任意 |
+
+---
+
+## 14. Implementation Notes for Claude
+
+### 注意点 (Gotchas)
+
+1. **pdfjs-dist のモック必須**
+   - `PDFService.test.ts` では `vi.mock('pdfjs-dist')` が必要
+   - Worker設定もモック対象
+
+2. **SelectionManager の State 依存**
+   - `getState()` コールバックを注入するパターン
+   - テストでは `mockState` オブジェクトを用意
+
+3. **ColorService は static メソッド**
+   - インスタンス化不要、直接 `ColorService.rgbToCmyk()` 呼び出し
+
+4. **E2Eテストでの PDFアップロード**
+   - `page.locator('#file-input').setInputFiles(path)` を使用
+   - fixturesディレクトリにサンプルPDF必須
+
+5. **CI環境での注意**
+   - Playwright は `--with-deps` でブラウザ依存をインストール
+   - `webServer` 設定で dev server を自動起動
+
+### 実装順序推奨
+
+```
+1. npm install (Vitest + Playwright)
+2. vitest.config.ts 作成
+3. playwright.config.ts 作成
+4. tests/fixtures/ にサンプルファイル配置
+5. ColorService.test.ts → 最も簡単、動作確認用
+6. UndoManager.test.ts → スタック操作
+7. PDFService.test.ts → モック必要
+8. SelectionManager.test.ts → State依存
+9. pdf-load.spec.ts → E2E基本
+10. page-operations.spec.ts → E2E操作
+11. GitHub Actions workflow
+12. docs更新
+```
+
