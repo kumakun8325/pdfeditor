@@ -14,7 +14,12 @@ PDFEditorApp (main.ts) - The central hub orchestrating all modules:
 │   ├── SelectionManager - Multi-page selection
 │   ├── AnnotationManager - Text and highlight annotations
 │   ├── ToolbarManager / ContextMenuManager / DragDropManager
-│   └── UndoManager / HelpManager
+│   ├── UndoManager / HelpManager
+│   ├── UndoExecutionManager - Undo/Redo action execution
+│   ├── ExportManager - PDF/image export, split download
+│   ├── ClipboardManager - Annotation/page copy/paste
+│   ├── FileOperationManager - PDF/image file loading
+│   └── CanvasInteractionManager - Canvas mouse events, drag/resize/rotate
 └── Services
     ├── PDFService - PDF loading/exporting
     ├── ImageService - Image import/export (PNG, ZIP)

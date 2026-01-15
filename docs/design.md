@@ -65,6 +65,11 @@ graph TB
 | DragDropManager | ファイル/ページのドラッグ&ドロップ |
 | UndoManager | Undo/Redoスタック管理 |
 | HelpManager | ヘルプモーダル |
+| UndoExecutionManager | Undo/Redo操作の実行（UndoManagerはスタック管理のみ） |
+| ExportManager | PDF/画像エクスポート、分割ダウンロード |
+| ClipboardManager | 注釈・ページのコピー/ペースト |
+| FileOperationManager | PDF/画像ファイルの読み込み |
+| CanvasInteractionManager | Canvasマウスイベント、注釈ドラッグ/リサイズ/回転 |
 
 ---
 
@@ -95,6 +100,11 @@ pdfeditor/
 │   │   ├── ContextMenuManager.ts
 │   │   ├── DragDropManager.ts
 │   │   ├── UndoManager.ts
+│   │   ├── UndoExecutionManager.ts
+│   │   ├── ExportManager.ts
+│   │   ├── ClipboardManager.ts
+│   │   ├── FileOperationManager.ts
+│   │   ├── CanvasInteractionManager.ts
 │   │   └── HelpManager.ts
 │   ├── services/
 │   │   ├── PDFService.ts    # PDF操作サービス
@@ -211,7 +221,7 @@ type UndoAction =
 
 PDFページの読み込み、レンダリング、エクスポートを管理するサービス。
 
-**注意**: `addPDF()`メソッドは設計上PDFServiceに属するが、実装は`PDFEditorApp.addPDF()` (main.ts:570-598)に配置されている。
+**注意**: `addPDF()`およびファイル読み込み処理は`FileOperationManager`に委譲されています。
 
 ```typescript
 class PDFService {

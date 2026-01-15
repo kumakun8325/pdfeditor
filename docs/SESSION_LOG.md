@@ -87,3 +87,50 @@
 ### ブランチ状態
 - ブランチ名: `main`
 - 状態: 作業完了
+
+---
+
+## 2026-01-15 (水)
+
+### 実施内容
+- **main.ts 大規模リファクタリング（Phase 36）**
+    - main.ts を 2,492行 → 1,033行 に削減（58%削減、1,459行削除）
+    - 5つの新Manager作成による責務分離:
+        - `UndoExecutionManager` (617行) - Undo/Redo実行ロジック
+        - `CanvasInteractionManager` (525行) - Canvas マウスイベント処理
+        - `ExportManager` (298行) - PDF/画像エクスポート
+        - `ClipboardManager` (164行) - コピー/ペースト処理
+        - `FileOperationManager` (153行) - ファイル読み込み処理
+    - コールバック注入パターンで循環依存を回避
+    - State Getter パターン (`getState: () => AppState`) 採用
+- **ドキュメント更新**
+    - `.claude/rules/architecture.md` - 5つの新Managerを追加
+    - `docs/design.md` - Manager責務一覧と構成を更新
+    - `docs/design.md` - PDFService注意事項を修正（FileOperationManager委譲）
+- **コードレビュー実施**
+    - `/review` で全変更ファイルを自己点検
+    - ArrayBuffer処理、座標変換、メモリリークの確認
+    - セキュリティチェック完了
+- **ビルド＆動作確認**
+    - TypeScriptコンパイル成功
+    - Vite本番ビルド成功
+    - 開発サーバー起動確認 (http://localhost:5173/)
+
+### 変更ファイル
+- `src/main.ts` - 1,459行削減、Manager呼び出しに委譲
+- `src/managers/UndoExecutionManager.ts` (新規) - 617行
+- `src/managers/CanvasInteractionManager.ts` (新規) - 525行
+- `src/managers/ExportManager.ts` (新規) - 298行
+- `src/managers/ClipboardManager.ts` (新規) - 164行
+- `src/managers/FileOperationManager.ts` (新規) - 153行
+- `.claude/rules/architecture.md` - Class Structure更新
+- `docs/design.md` - Manager責務一覧、ディレクトリ構成、PDFService注意事項更新
+- `docs/SESSION_LOG.md` - 本セッションログ更新
+
+### 次回TODO
+- Phase 37: PWA対応 (Service Worker, Manifest)
+- Phase 38: パフォーマンス最適化（大規模PDF対応）
+
+### ブランチ状態
+- ブランチ名: `main`
+- 状態: リファクタリング完了
