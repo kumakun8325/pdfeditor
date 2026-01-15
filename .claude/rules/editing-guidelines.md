@@ -1,4 +1,4 @@
-# Skill: Precision Editor (Inspired by Qiita Best Practices)
+# Editing Guidelines
 
 ## Objective
 Execute file edits autonomously and accurately without manual confirmation, following professional standards.

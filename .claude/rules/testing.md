@@ -1,4 +1,4 @@
-# Skill: Testing Expert
+# Testing Guidelines
 
 ## Objective
 Ensure zero regressions (degradation) through automated testing.

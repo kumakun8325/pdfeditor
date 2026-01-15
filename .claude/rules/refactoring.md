@@ -1,4 +1,4 @@
-# Skill: Refactoring Expert
+# Refactoring Guidelines
 
 ## Objective
 Maintain the "Manager Pattern" and prevent file bloat (especially in `main.ts`).
