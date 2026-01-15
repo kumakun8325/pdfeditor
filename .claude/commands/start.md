@@ -4,6 +4,13 @@ Read handoff from Antigravity and start implementing.
 
 ## Steps
 
+### 0. Sync with Remote (REQUIRED)
+```bash
+git checkout main
+git pull origin main
+```
+Always pull latest changes before starting work.
+
 ### 1. Check Handoff Status
 ```bash
 cat docs/handoff.md

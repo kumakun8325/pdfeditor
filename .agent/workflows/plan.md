@@ -22,6 +22,7 @@ Create a detailed task document that Claude Sonnet can implement immediately wit
 Before creating the task document:
 - Read relevant source files
 - Understand current implementation
+- **Check `package.json` scripts and dependencies**
 - Identify exact files and methods to modify
 - Determine the implementation approach
 

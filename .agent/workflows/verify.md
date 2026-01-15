@@ -8,20 +8,26 @@ Verify implementation completed by Claude.
 
 ## Steps
 
-### 1. Check Handoff Status
+### 1. Sync with Remote (REQUIRED)
+```bash
+git checkout main
+git pull origin main
+```
+Always pull latest changes before verification.
+
+### 2. Check Handoff Status
 ```bash
 cat docs/handoff.md
 ```
 - Verify status is `READY_FOR_VERIFY`
 - Read "Handoff: Claude → Antigravity" section
 
-### 2. Pull Latest Changes
+### 3. Install Dependencies (if needed)
 ```bash
-git checkout main
-git pull
+npm install
 ```
 
-### 3. Build and Lint
+### 4. Build and Lint
 ```bash
 npm run lint
 npm run build
@@ -29,19 +35,19 @@ npm run build
 - Check for errors
 - Note any warnings
 
-### 4. Run Dev Server
+### 5. Run Dev Server
 ```bash
 npm run dev
 ```
 - Open browser at http://localhost:5173/
 - Test the implemented feature
 
-### 5. Check Acceptance Criteria
+### 6. Check Acceptance Criteria
 Read task document and verify each criterion:
 - [ ] Criterion 1 - PASS/FAIL
 - [ ] Criterion 2 - PASS/FAIL
 
-### 6. Update Handoff
+### 7. Update Handoff
 
 #### If PASS:
 ```markdown
@@ -69,13 +75,22 @@ Update `docs/tasks.md`:
 - **Fix Suggestion**: [How to fix]
 ```
 
-### 7. Commit and Push
+### 8. Commit and Push
 ```bash
 git add docs/
 git commit -m "docs: Verification result for #XX"
 git push
 ```
 
-### 8. Next Steps
-- If verified: Plan next task or notify user
+### 9. Deploy (If Verified)
+If all tests pass and feature is ready for production:
+```bash
+npm run build
+firebase deploy --only hosting
+```
+- Verify deployment at production URL
+- Confirm feature works in production
+
+### 10. Next Steps
+- If verified and deployed: Plan next task or notify user
 - If failed: Tell user "Feedback added. Run Claude with /start"
