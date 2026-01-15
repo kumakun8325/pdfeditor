@@ -1,6 +1,8 @@
-# /start - Begin Implementation
+# /start $ARGUMENTS - Begin Implementation
 
 Read handoff from Antigravity and start implementing.
+
+**Usage**: `/start` or `/start 40` (to auto-load task_40.md)
 
 ## Steps
 
@@ -19,8 +21,10 @@ cat docs/handoff.md
 - Read "Handoff: Antigravity → Claude" section
 
 ### 2. Read Task Document
-- Open the task doc specified in handoff (e.g., `docs/task_XXX.md`)
+- If `$ARGUMENTS` provided: Open `docs/task_$ARGUMENTS.md`
+- Otherwise: Open the task doc specified in handoff
 - Understand requirements and implementation plan
+- **If requirements are ambiguous, ask clarifying questions before proceeding**
 
 ### 3. Impact Analysis (REQUIRED)
 Before any code changes:

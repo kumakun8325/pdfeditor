@@ -23,6 +23,9 @@
 3. **Deep Tech**: Update `.claude/rules/architecture.md` or `design.md` for changes in logic, class structure, or types.
 4. **Consistency**: Ensure implementation and documentation are always in sync.
 
+## DEVELOPMENT RULES
+- **Ask Before Implementing**: When requirements are ambiguous or have multiple valid approaches, ask clarifying questions before writing code.
+
 ## CRITICAL OPERATIONAL RULES
 1. **Firebase Auth**: NEVER use `firebase login`. Always use the Service Account Key via env var.
 2. **Workflow**: Refer to `.claude/rules/workflow.md` for Issue/PR procedures.
