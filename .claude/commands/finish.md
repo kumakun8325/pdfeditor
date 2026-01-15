@@ -1,80 +1,76 @@
-# 作業終了コマンド
+# /finish - Complete Implementation
 
-作業を終了する際に以下の処理を順番に実行してください。
+Finish implementation and hand off to Antigravity for verification.
 
-## 0. ドキュメント整合性チェック（重要）
+## Steps
 
-**実装とドキュメントの整合性を確認してください。**
-
-### 0.1 requirements.mdチェック
-- 実装済み機能がすべて要件定義書に記載されているか
-- 未実装の要件は「任意（未実装）」とマークされているか
-- 新しい機能を追加した場合、対応する要件IDを追加したか
-
-### 0.2 design.mdチェック
-- 新しいManager/Serviceを追加した場合、アーキテクチャ図に反映されているか
-- 型定義（AppState, PageData, UndoAction等）が最新のコードと一致しているか
-- 新しいメソッドを追加した場合、該当サービスの設計に記載されているか
-
-### 0.3 チェック方法
-以下のコマンドで探索エージェントを使用して整合性をチェック：
-
+### 1. Verify Build
+```bash
+npm run lint
+npm run build
 ```
-Task tool with subagent_type=Explore を2つ並列実行:
-1. requirements.mdと実装の比較
-2. design.mdと実装の比較
+- Fix any errors before proceeding
+
+### 2. Update Task Document
+Edit the task doc (e.g., `docs/task_XX.md`):
+- Mark completed steps with `[x]`
+- Add any implementation notes
+
+### 3. Update Handoff
+Edit `docs/handoff.md`:
+
+```markdown
+## Current Task
+**Status**: `READY_FOR_VERIFY`
+**Assigned To**: Antigravity
+
+## Handoff: Claude → Antigravity
+### Completed Work
+- [What was implemented]
+
+### Changed Files
+- path/to/file1.ts
+- path/to/file2.ts
+
+### Test Instructions
+1. Run `npm run dev`
+2. Open http://localhost:5173/
+3. [Steps to test]
+
+### Known Issues
+- [Any limitations or issues]
 ```
 
-**不整合が見つかった場合は、このステップでドキュメントを更新してください。**
+### 4. Update SESSION_LOG.md
+Add entry to `docs/SESSION_LOG.md`:
+```markdown
+## YYYY-MM-DD
 
----
+### Completed
+- Task #XX: [Description]
 
-## 1. docs以下のドキュメントを確認・更新
+### Changed Files
+- file1.ts
+- file2.ts
+```
 
-### 1.1 requirements.md（要件定義書）
-- 新機能を実装した場合、該当する要件を追加または更新する
-- 要件IDの採番規則: F-XXX（機能要件）、NF-XXX（非機能要件）
+### 5. Commit and Push
+```bash
+git add .
+git commit -m "feat: Implement #XX - description"
+git push -u origin HEAD
+```
 
-### 1.2 design.md（設計書）
-- アーキテクチャに変更があった場合、図や説明を更新する
-- 新しいService/Managerを追加した場合、設計書に反映する
-- 型定義に変更があった場合、該当セクションを更新する
+### 6. Create Pull Request
+```bash
+gh pr create --title "feat: description" --body "Closes #XX"
+```
 
-### 1.3 tasks.md（タスク一覧）
-- 完了したタスクにチェックを入れる `[x]`
-- 新しいタスクがあれば追加する
-- Phase番号を適切に管理する
-
-### 1.4 walkthrough.md（ウォークスルー）
-- 使い方に変更があった場合、更新する
-
-### 1.5 SESSION_LOG.md（セッションログ）
-- 今日の作業内容を追記する（日付、実施内容、変更ファイル）
-
-## 2. CLAUDE.mdを更新
-- Session Statusセクションを更新する
-- 今日完了した作業内容を記録する
-- 次回のタスク候補を記載する
-
-## 3. Git commit & push
-- 変更内容を確認 (`git status`, `git diff`)
-- 適切なコミットメッセージでコミットする
-  - feat: 新機能追加
-  - fix: バグ修正
-  - docs: ドキュメント更新
-  - refactor: リファクタリング
-- GitHubにpushする (`git push`)
-
-## 4. サーバーを終了
-- バックグラウンドで実行中の開発サーバーがあれば停止する
-
-## チェックリスト
-- [ ] requirements.md の確認・更新
-- [ ] design.md の確認・更新
-- [ ] tasks.md の確認・更新
-- [ ] walkthrough.md の確認・更新
-- [ ] SESSION_LOG.md の追記
-- [ ] CLAUDE.md の更新
-- [ ] git commit
-- [ ] git push
-- [ ] サーバー停止
+## Checklist
+- [ ] Build passes
+- [ ] Lint passes
+- [ ] Task doc updated
+- [ ] handoff.md updated
+- [ ] SESSION_LOG.md updated
+- [ ] Changes committed
+- [ ] PR created
