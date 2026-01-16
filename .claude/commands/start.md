@@ -39,6 +39,12 @@ Before any code changes:
 3. **Present implementation plan to user as bullet points**
 4. **Wait for user approval before proceeding**
 
+> **Tip**: For complex problems, use "think" keywords to trigger extended thinking:
+> - `think` - standard thinking
+> - `think hard` - more thorough analysis
+> - `think harder` - deeper evaluation
+> - `ultrathink` - maximum thinking budget
+
 Example output:
 ```
 ## Impact Analysis
