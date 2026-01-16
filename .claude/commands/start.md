@@ -1,3 +1,9 @@
+---
+description: Begin implementation from Antigravity handoff
+allowed-tools: Read, Edit, Write, Bash, Grep, Glob
+model: inherit
+---
+
 # /start $ARGUMENTS - Begin Implementation
 
 Read handoff from Antigravity and start implementing.

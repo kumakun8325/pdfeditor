@@ -1,3 +1,9 @@
+---
+description: Complete implementation and hand off for verification
+allowed-tools: Read, Edit, Write, Bash, Grep, Glob
+model: inherit
+---
+
 # /finish - Complete Implementation
 
 Finish implementation and hand off to Antigravity for verification.
