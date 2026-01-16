@@ -5,19 +5,22 @@ Finish implementation and hand off to Antigravity for verification.
 ## Steps
 
 ### 1. Self-Review (REQUIRED)
-Run `/review` on main changed files:
+Use the `code-reviewer` agent to review your changes:
 ```
-/review src/managers/NewManager.ts
-/review src/main.ts
+Use the code-reviewer agent to review my changes
 ```
-Fix any issues found.
+Fix any critical or warning issues found.
 
 ### 2. Run Tests
 ```bash
 npm run test
 ```
-- Fix any failing tests
-- If no tests yet, skip this step
+- If tests pass, continue to next step
+- If tests fail, use the `test-analyzer` agent:
+  ```
+  Use the test-analyzer agent to analyze the failures
+  ```
+- Fix failing tests before proceeding
 
 ### 3. Verify Build
 ```bash
@@ -32,7 +35,11 @@ Edit the task doc (e.g., `docs/task_XX.md`):
 - Add any implementation notes
 
 ### 5. Update Documentation
-Check and update if needed:
+Use the `documentation-writer` agent to ensure consistency:
+```
+Use the documentation-writer agent to update docs for this feature
+```
+Or manually check and update if needed:
 - `docs/requirements.md` - Add new requirement IDs
 - `docs/design.md` - Update architecture/types
 

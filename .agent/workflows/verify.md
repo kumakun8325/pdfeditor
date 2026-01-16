@@ -82,7 +82,16 @@ git commit -m "docs: Verification result for #XX"
 git push
 ```
 
-### 9. Deploy (If Verified)
+### 9. Security Audit (Before Deploy)
+Check for security issues:
+```bash
+npm audit
+```
+- Review user input handling in new code
+- Check for exposed credentials or API keys
+- If issues found, send feedback to Claude
+
+### 10. Deploy (If Verified)
 If all tests pass and feature is ready for production:
 ```bash
 npm run build
@@ -91,6 +100,6 @@ firebase deploy --only hosting
 - Verify deployment at production URL
 - Confirm feature works in production
 
-### 10. Next Steps
+### 11. Next Steps
 - If verified and deployed: Plan next task or notify user
 - If failed: Tell user "Feedback added. Run Claude with /start"
