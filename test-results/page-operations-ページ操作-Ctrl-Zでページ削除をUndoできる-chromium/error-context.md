@@ -1,0 +1,63 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e2]:
+  - banner [ref=e3]:
+    - generic [ref=e4]:
+      - generic [ref=e5]:
+        - button "PDFを開く (Ctrl/Cmd + O)" [ref=e6] [cursor=pointer]:
+          - img [ref=e7]
+        - button "PDFを保存 (Ctrl/Cmd + S)" [disabled] [ref=e10]:
+          - img [ref=e11]
+        - button "その他のファイル操作" [ref=e16] [cursor=pointer]:
+          - img [ref=e17]
+      - button "画像を追加" [ref=e20] [cursor=pointer]:
+        - img [ref=e21]
+      - generic [ref=e26]:
+        - button "ページを上に移動" [disabled] [ref=e27]:
+          - img [ref=e28]
+        - button "ページを下に移動" [disabled] [ref=e30]:
+          - img [ref=e31]
+        - button "ページを90°回転" [disabled] [ref=e33]:
+          - img [ref=e34]
+        - button "ページを複製" [disabled] [ref=e37]:
+          - img [ref=e38]
+        - button "ページを削除 (Ctrl/Cmd + D)" [disabled] [ref=e41]:
+          - img [ref=e42]
+      - generic [ref=e46]:
+        - button "テキストを追加" [disabled] [ref=e47]:
+          - img [ref=e48]
+        - button "マーカーを追加（ドラッグ）" [disabled] [ref=e50]:
+          - img [ref=e51]
+      - generic [ref=e54]:
+        - button "元に戻す (Ctrl+Z)" [disabled] [ref=e55]:
+          - img [ref=e56]
+        - button "やり直し (Ctrl+Y)" [disabled] [ref=e59]:
+          - img [ref=e60]
+      - button "エクスポート" [ref=e65] [cursor=pointer]:
+        - img [ref=e66]
+      - generic [ref=e70]:
+        - button "縮小 (Ctrl + -)" [ref=e71] [cursor=pointer]:
+          - img [ref=e72]
+        - generic [ref=e73]: 100%
+        - button "拡大 (Ctrl + +)" [ref=e74] [cursor=pointer]:
+          - img [ref=e75]
+        - button "リセット (Ctrl + 0)" [ref=e76] [cursor=pointer]:
+          - img [ref=e77]
+    - generic [ref=e80]:
+      - button "ヘルプ (ショートカット一覧)" [ref=e81] [cursor=pointer]:
+        - img [ref=e82]
+      - button "テーマ切り替え" [ref=e85] [cursor=pointer]:
+        - img [ref=e86]
+  - main [ref=e92]:
+    - complementary [ref=e93]:
+      - generic [ref=e95]: ページ一覧
+      - generic [ref=e98]:
+        - img [ref=e99]
+        - paragraph [ref=e102]: PDF/画像をドロップ
+    - generic [ref=e104]:
+      - img [ref=e105]
+      - heading "PDFを開いてください" [level=2] [ref=e108]
+      - paragraph [ref=e109]: 「開く」ボタンをクリックするか、エリアにドラッグ＆ドロップ
+      - button "ファイルを開く" [ref=e110] [cursor=pointer]
+```
