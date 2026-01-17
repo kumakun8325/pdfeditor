@@ -902,6 +902,13 @@ export class PDFEditorApp implements AppAction {
     }
 
     /**
+     * シェイプモード取得 (CanvasInteractionManagerに委譲)
+     */
+    public getShapeDrawingMode(): ShapeType | null {
+        return this.canvasInteractionManager.getShapeDrawingMode();
+    }
+
+    /**
      * シェイプオプション設定 (CanvasInteractionManagerに委譲)
      */
     public setShapeOptions(strokeColor: string, strokeWidth: number, fillColor: string): void {

@@ -647,6 +647,14 @@ export class CanvasInteractionManager {
     }
 
     public setShapeMode(type: ShapeType | null): void {
+        // 同じタイプが選択された場合は解除（トグル動作）
+        if (this.shapeDrawingMode === type) {
+            this.shapeDrawingMode = null;
+            this.elements.previewCanvas.style.cursor = 'default';
+            this.elements.btnShapes?.classList.remove('active');
+            this.callbacks.showToast('図形モード解除', 'success');
+            return;
+        }
         this.shapeDrawingMode = type;
         this.disableHighlightMode();
         this.elements.previewCanvas.style.cursor = type ? 'crosshair' : 'default';

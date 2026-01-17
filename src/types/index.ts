@@ -327,6 +327,7 @@ export interface AppAction {
     addTextAnnotation(): void;
     toggleHighlightMode(): void;
     setShapeMode(type: ShapeType | null): void;
+    getShapeDrawingMode(): ShapeType | null;
     setShapeOptions(strokeColor: string, strokeWidth: number, fillColor: string): void;
 
     // ズーム

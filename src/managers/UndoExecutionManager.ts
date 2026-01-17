@@ -63,7 +63,8 @@ export class UndoExecutionManager {
                 this.state.selectedPageIndex = action.index;
                 this.callbacks.renderPageList();
                 this.callbacks.updateMainView();
-                break;
+                this.callbacks.updateUI();
+                return;
 
             case 'movePage':
                 this.state.pages = this.pdfService.reorderPages(
@@ -74,7 +75,8 @@ export class UndoExecutionManager {
                 this.state.selectedPageIndex = action.fromIndex;
                 this.callbacks.renderPageList();
                 this.callbacks.updateMainView();
-                break;
+                this.callbacks.updateUI();
+                return;
 
             case 'rotatePage': {
                 const page = this.state.pages.find(p => p.id === action.pageId);
@@ -88,6 +90,8 @@ export class UndoExecutionManager {
                     }
                     this.callbacks.updateMainView();
                     this.callbacks.renderPageList();
+                    this.callbacks.updateUI();
+                    return;
                 }
                 break;
             }
@@ -97,7 +101,8 @@ export class UndoExecutionManager {
                 this.state.selectedPageIndex = action.selectedIndex;
                 this.callbacks.renderPageList();
                 this.callbacks.updateMainView();
-                break;
+                this.callbacks.updateUI();
+                return;
 
             case 'addText': {
                 const page = this.state.pages.find(p => p.id === action.pageId);
@@ -115,7 +120,8 @@ export class UndoExecutionManager {
                         }
                     }
                 }
-                break;
+                this.callbacks.updateUI();
+                return;
             }
 
             case 'addHighlight': {
@@ -134,7 +140,8 @@ export class UndoExecutionManager {
                         }
                     }
                 }
-                break;
+                this.callbacks.updateUI();
+                return;
             }
 
             case 'addImage':
@@ -153,6 +160,8 @@ export class UndoExecutionManager {
                         }
                         this.callbacks.renderPageList();
                         this.callbacks.updateMainView();
+                        this.callbacks.updateUI();
+                        return;
                     }
                 }
                 break;
@@ -172,7 +181,8 @@ export class UndoExecutionManager {
                         }
                     }
                 }
-                break;
+                this.callbacks.updateUI();
+                return;
             }
 
             case 'moveHighlight': {
@@ -189,7 +199,8 @@ export class UndoExecutionManager {
                         }
                     }
                 }
-                break;
+                this.callbacks.updateUI();
+                return;
             }
 
             case 'deleteText': {
@@ -235,7 +246,8 @@ export class UndoExecutionManager {
                         }
                     }
                 }
-                break;
+                this.callbacks.updateUI();
+                return;
             }
 
             case 'resizeHighlight': {
@@ -252,7 +264,8 @@ export class UndoExecutionManager {
                         }
                     }
                 }
-                break;
+                this.callbacks.updateUI();
+                return;
             }
 
             case 'addShape': {
@@ -275,7 +288,8 @@ export class UndoExecutionManager {
                         }
                     }
                 }
-                break;
+                this.callbacks.updateUI();
+                return;
             }
 
             case 'deleteShape': {
@@ -321,7 +335,8 @@ export class UndoExecutionManager {
                         }
                     }
                 }
-                break;
+                this.callbacks.updateUI();
+                return;
             }
 
             case 'rotateText': {
@@ -337,7 +352,8 @@ export class UndoExecutionManager {
                         }
                     }
                 }
-                break;
+                this.callbacks.updateUI();
+                return;
             }
 
             // バッチ操作
@@ -376,7 +392,8 @@ export class UndoExecutionManager {
                 }
                 this.callbacks.updateMainView();
                 this.callbacks.renderPageList();
-                break;
+                this.callbacks.updateUI();
+                return;
             }
 
             case 'batchDuplicate': {
@@ -396,6 +413,7 @@ export class UndoExecutionManager {
                 }
                 this.callbacks.renderPageList();
                 this.callbacks.updateMainView();
+                this.callbacks.updateUI();
                 return;
             }
 
@@ -408,6 +426,7 @@ export class UndoExecutionManager {
                 this.state.selectedPageIndex = sorted[0].index;
                 this.callbacks.renderPageList();
                 this.callbacks.updateMainView();
+                this.callbacks.updateUI();
                 return;
             }
         }
@@ -440,6 +459,7 @@ export class UndoExecutionManager {
                 }
                 this.callbacks.renderPageList();
                 this.callbacks.updateMainView();
+                this.callbacks.updateUI();
                 return;
 
             case 'movePage':
@@ -451,6 +471,7 @@ export class UndoExecutionManager {
                 this.state.selectedPageIndex = action.toIndex;
                 this.callbacks.renderPageList();
                 this.callbacks.updateMainView();
+                this.callbacks.updateUI();
                 return;
 
             case 'rotatePage': {
@@ -471,6 +492,7 @@ export class UndoExecutionManager {
                 this.state.selectedPageIndex = -1;
                 this.callbacks.renderPageList();
                 this.callbacks.updateMainView();
+                this.callbacks.updateUI();
                 return;
 
             case 'addText': {
@@ -483,6 +505,8 @@ export class UndoExecutionManager {
                     } else {
                         this.callbacks.updateMainView();
                     }
+                    this.callbacks.updateUI();
+                    return;
                 }
                 break;
             }
@@ -531,7 +555,8 @@ export class UndoExecutionManager {
                         }
                     }
                 }
-                break;
+                this.callbacks.updateUI();
+                return;
             }
 
             case 'moveHighlight': {
@@ -548,7 +573,8 @@ export class UndoExecutionManager {
                         }
                     }
                 }
-                break;
+                this.callbacks.updateUI();
+                return;
             }
 
             case 'deleteText': {
@@ -564,7 +590,8 @@ export class UndoExecutionManager {
                         }
                     }
                 }
-                break;
+                this.callbacks.updateUI();
+                return;
             }
 
             case 'deleteHighlight': {
@@ -580,7 +607,8 @@ export class UndoExecutionManager {
                         }
                     }
                 }
-                break;
+                this.callbacks.updateUI();
+                return;
             }
 
             case 'updateText': {
@@ -598,7 +626,8 @@ export class UndoExecutionManager {
                         }
                     }
                 }
-                break;
+                this.callbacks.updateUI();
+                return;
             }
 
             case 'resizeHighlight': {
@@ -615,7 +644,8 @@ export class UndoExecutionManager {
                         }
                     }
                 }
-                break;
+                this.callbacks.updateUI();
+                return;
             }
 
             case 'addShape': {
@@ -632,6 +662,8 @@ export class UndoExecutionManager {
                     } else {
                         this.callbacks.updateMainView();
                     }
+                    this.callbacks.updateUI();
+                    return;
                 }
                 break;
             }
@@ -649,7 +681,8 @@ export class UndoExecutionManager {
                         }
                     }
                 }
-                break;
+                this.callbacks.updateUI();
+                return;
             }
 
             case 'moveShape': {
@@ -677,7 +710,8 @@ export class UndoExecutionManager {
                         }
                     }
                 }
-                break;
+                this.callbacks.updateUI();
+                return;
             }
 
             case 'rotateText': {
@@ -693,7 +727,8 @@ export class UndoExecutionManager {
                         }
                     }
                 }
-                break;
+                this.callbacks.updateUI();
+                return;
             }
 
             // バッチ操作のRedo
@@ -720,6 +755,7 @@ export class UndoExecutionManager {
                 }
                 this.callbacks.renderPageList();
                 this.callbacks.updateMainView();
+                this.callbacks.updateUI();
                 return;
             }
 
@@ -739,6 +775,7 @@ export class UndoExecutionManager {
                 }
                 this.callbacks.renderPageList();
                 this.callbacks.updateMainView();
+                this.callbacks.updateUI();
                 return;
             }
         }

@@ -321,10 +321,18 @@ export class EventManager {
             shapeStrokeWidth, shapeStrokeColor, shapeFillColor, shapeFillEnabled
         } = this.elements;
 
-        // トグルボタン: ドロップダウン表示/非表示
+        // メインボタン: モードがONなら解除、OFFならドロップダウン表示
         btnShapes.addEventListener('click', (e) => {
             e.stopPropagation();
-            shapeMenu.classList.toggle('show');
+            const currentMode = this.app.getShapeDrawingMode();
+            if (currentMode) {
+                // モードONなら解除
+                this.app.setShapeMode(null);
+                this.updateShapeOptions();
+            } else {
+                // モードOFFならドロップダウン表示
+                shapeMenu.classList.toggle('show');
+            }
         });
 
         // シェイプ選択ボタン
@@ -365,6 +373,19 @@ export class EventManager {
             ? this.elements.shapeFillColor.value
             : '';
         this.app.setShapeOptions(strokeColor, strokeWidth, fillColor);
+
+        // 選択状態の視覚的フィードバック
+        const currentMode = this.app.getShapeDrawingMode();
+        const shapeButtons: { btn: HTMLButtonElement; type: 'line' | 'arrow' | 'rectangle' | 'ellipse' | 'freehand' }[] = [
+            { btn: this.elements.btnShapeLine, type: 'line' },
+            { btn: this.elements.btnShapeArrow, type: 'arrow' },
+            { btn: this.elements.btnShapeRect, type: 'rectangle' },
+            { btn: this.elements.btnShapeEllipse, type: 'ellipse' },
+            { btn: this.elements.btnShapeFreehand, type: 'freehand' },
+        ];
+        for (const { btn, type } of shapeButtons) {
+            btn.classList.toggle('active', currentMode === type);
+        }
     }
 
     private setupDropZone(): void {
