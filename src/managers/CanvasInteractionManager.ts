@@ -459,6 +459,9 @@ export class CanvasInteractionManager {
                 this.selectedAnnotationId = shape.id;
             }
             this.drawingShape = null;
+            this.shapeDrawingMode = null;
+            this.elements.previewCanvas.style.cursor = 'default';
+            this.elements.btnShapes?.classList.remove('active');
             if (this.renderManager) {
                 this.renderManager.redrawWithCachedBackground(this.selectedAnnotationId);
             }

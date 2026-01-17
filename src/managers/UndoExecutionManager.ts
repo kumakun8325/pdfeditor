@@ -699,13 +699,11 @@ export class UndoExecutionManager {
             // バッチ操作のRedo
             case 'batchMove': {
                 this.pageManager.movePages(action.fromIndices, action.toIndex);
-                this.undoManager.popUndo();
                 return;
             }
 
             case 'batchRotate': {
                 this.pageManager.rotatePages(action.pageIds.map(id => this.state.pages.findIndex(p => p.id === id)).filter(i => i !== -1));
-                this.undoManager.popUndo();
                 if (this.renderManager) {
                     this.renderManager.clearCache();
                 }
