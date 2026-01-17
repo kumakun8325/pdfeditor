@@ -170,6 +170,9 @@ export class EventManager {
             this.app.toggleHighlightMode();
         });
 
+        // 図形ドロップダウンメニュー
+        this.setupShapeMenu();
+
         // ズーム操作
         this.elements.btnZoomIn.addEventListener('click', () => this.app.zoomIn());
         this.elements.btnZoomOut.addEventListener('click', () => this.app.zoomOut());
@@ -309,6 +312,59 @@ export class EventManager {
             this.swipeState.isSidebarSwipe = false;
             this.swipeState.isSwipeGesture = false;
         }, { passive: true });
+    }
+
+    private setupShapeMenu(): void {
+        const {
+            btnShapes, shapeMenu,
+            btnShapeLine, btnShapeArrow, btnShapeRect, btnShapeEllipse, btnShapeFreehand,
+            shapeStrokeWidth, shapeStrokeColor, shapeFillColor, shapeFillEnabled
+        } = this.elements;
+
+        // トグルボタン: ドロップダウン表示/非表示
+        btnShapes.addEventListener('click', (e) => {
+            e.stopPropagation();
+            shapeMenu.classList.toggle('show');
+        });
+
+        // シェイプ選択ボタン
+        const shapeButtons: { btn: HTMLButtonElement; type: 'line' | 'arrow' | 'rectangle' | 'ellipse' | 'freehand' }[] = [
+            { btn: btnShapeLine, type: 'line' },
+            { btn: btnShapeArrow, type: 'arrow' },
+            { btn: btnShapeRect, type: 'rectangle' },
+            { btn: btnShapeEllipse, type: 'ellipse' },
+            { btn: btnShapeFreehand, type: 'freehand' },
+        ];
+
+        for (const { btn, type } of shapeButtons) {
+            btn.addEventListener('click', () => {
+                this.app.setShapeMode(type);
+                this.updateShapeOptions();
+                shapeMenu.classList.remove('show');
+            });
+        }
+
+        // 設定変更時にオプションを更新
+        [shapeStrokeWidth, shapeStrokeColor, shapeFillColor, shapeFillEnabled].forEach(el => {
+            el.addEventListener('change', () => this.updateShapeOptions());
+        });
+
+        // メニュー外クリックで閉じる
+        document.addEventListener('click', (e) => {
+            const target = e.target as HTMLElement;
+            if (!shapeMenu.contains(target) && target !== btnShapes) {
+                shapeMenu.classList.remove('show');
+            }
+        });
+    }
+
+    private updateShapeOptions(): void {
+        const strokeColor = this.elements.shapeStrokeColor.value;
+        const strokeWidth = parseInt(this.elements.shapeStrokeWidth.value);
+        const fillColor = this.elements.shapeFillEnabled.checked
+            ? this.elements.shapeFillColor.value
+            : '';
+        this.app.setShapeOptions(strokeColor, strokeWidth, fillColor);
     }
 
     private setupDropZone(): void {

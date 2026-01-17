@@ -255,6 +255,75 @@ export class UndoExecutionManager {
                 break;
             }
 
+            case 'addShape': {
+                const page = this.state.pages.find(p => p.id === action.pageId);
+                if (page && page.shapeAnnotations) {
+                    const idx = page.shapeAnnotations.findIndex(s => s.id === action.annotationId);
+                    if (idx !== -1) {
+                        if (!action.annotation) {
+                            const shape = page.shapeAnnotations[idx];
+                            action.annotation = {
+                                ...shape,
+                                path: shape.path ? shape.path.map(p => ({ ...p })) : undefined
+                            };
+                        }
+                        page.shapeAnnotations.splice(idx, 1);
+                        if (this.renderManager) {
+                            this.renderManager.redrawWithCachedBackground(selectedAnnotationId);
+                        } else {
+                            this.callbacks.updateMainView();
+                        }
+                    }
+                }
+                break;
+            }
+
+            case 'deleteShape': {
+                const page = this.state.pages.find(p => p.id === action.pageId);
+                if (page) {
+                    if (!page.shapeAnnotations) page.shapeAnnotations = [];
+                    const ann = action.annotation;
+                    page.shapeAnnotations.push({
+                        ...ann,
+                        path: ann.path ? ann.path.map(p => ({ ...p })) : undefined
+                    });
+                    if (this.renderManager) {
+                        this.renderManager.redrawWithCachedBackground(selectedAnnotationId);
+                    } else {
+                        this.callbacks.updateMainView();
+                    }
+                }
+                break;
+            }
+
+            case 'moveShape': {
+                const page = this.state.pages.find(p => p.id === action.pageId);
+                if (page && page.shapeAnnotations) {
+                    const shape = page.shapeAnnotations.find(s => s.id === action.annotationId);
+                    if (shape) {
+                        // freehandの場合はパスも移動
+                        if (shape.path && shape.path.length > 0) {
+                            const dx = action.fromX1 - shape.x1;
+                            const dy = action.fromY1 - shape.y1;
+                            for (const p of shape.path) {
+                                p.x += dx;
+                                p.y += dy;
+                            }
+                        }
+                        shape.x1 = action.fromX1;
+                        shape.y1 = action.fromY1;
+                        shape.x2 = action.fromX2;
+                        shape.y2 = action.fromY2;
+                        if (this.renderManager) {
+                            this.renderManager.redrawWithCachedBackground(selectedAnnotationId);
+                        } else {
+                            this.callbacks.updateMainView();
+                        }
+                    }
+                }
+                break;
+            }
+
             case 'rotateText': {
                 const page = this.state.pages.find(p => p.id === action.pageId);
                 if (page && page.textAnnotations) {
@@ -539,6 +608,68 @@ export class UndoExecutionManager {
                     if (ann) {
                         ann.width = action.newWidth;
                         ann.height = action.newHeight;
+                        if (this.renderManager) {
+                            this.renderManager.redrawWithCachedBackground(selectedAnnotationId);
+                        } else {
+                            this.callbacks.updateMainView();
+                        }
+                    }
+                }
+                break;
+            }
+
+            case 'addShape': {
+                const page = this.state.pages.find(p => p.id === action.pageId);
+                if (page && action.annotation) {
+                    if (!page.shapeAnnotations) page.shapeAnnotations = [];
+                    const ann = action.annotation;
+                    page.shapeAnnotations.push({
+                        ...ann,
+                        path: ann.path ? ann.path.map(p => ({ ...p })) : undefined
+                    });
+                    if (this.renderManager) {
+                        this.renderManager.redrawWithCachedBackground(selectedAnnotationId);
+                    } else {
+                        this.callbacks.updateMainView();
+                    }
+                }
+                break;
+            }
+
+            case 'deleteShape': {
+                const page = this.state.pages.find(p => p.id === action.pageId);
+                if (page && page.shapeAnnotations) {
+                    const idx = page.shapeAnnotations.findIndex(s => s.id === action.annotationId);
+                    if (idx !== -1) {
+                        page.shapeAnnotations.splice(idx, 1);
+                        if (this.renderManager) {
+                            this.renderManager.redrawWithCachedBackground(selectedAnnotationId);
+                        } else {
+                            this.callbacks.updateMainView();
+                        }
+                    }
+                }
+                break;
+            }
+
+            case 'moveShape': {
+                const page = this.state.pages.find(p => p.id === action.pageId);
+                if (page && page.shapeAnnotations) {
+                    const shape = page.shapeAnnotations.find(s => s.id === action.annotationId);
+                    if (shape) {
+                        // freehandの場合はパスも移動
+                        if (shape.path && shape.path.length > 0) {
+                            const dx = action.toX1 - shape.x1;
+                            const dy = action.toY1 - shape.y1;
+                            for (const p of shape.path) {
+                                p.x += dx;
+                                p.y += dy;
+                            }
+                        }
+                        shape.x1 = action.toX1;
+                        shape.y1 = action.toY1;
+                        shape.x2 = action.toX2;
+                        shape.y2 = action.toY2;
                         if (this.renderManager) {
                             this.renderManager.redrawWithCachedBackground(selectedAnnotationId);
                         } else {

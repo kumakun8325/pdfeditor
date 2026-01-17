@@ -1,4 +1,4 @@
-import type { AppState, PageData, ToastType, TextAnnotation, HighlightAnnotation, UndoAction, UIElements } from '../types';
+import type { AppState, PageData, ToastType, TextAnnotation, HighlightAnnotation, ShapeAnnotation, ShapeType, UndoAction, UIElements } from '../types';
 import { AnnotationManager } from './AnnotationManager';
 import type { RenderManager } from './RenderManager';
 
@@ -19,14 +19,21 @@ export interface CanvasInteractionCallbacks {
  */
 export class CanvasInteractionManager {
     // ドラッグ状態
-    private draggingAnnotation: TextAnnotation | HighlightAnnotation | null = null;
+    private draggingAnnotation: TextAnnotation | HighlightAnnotation | ShapeAnnotation | null = null;
     private dragOffset = { x: 0, y: 0 };
-    private draggingStart: { x: number; y: number } | null = null;
+    private draggingStart: { x: number; y: number; x2?: number; y2?: number } | null = null;
 
     // ハイライトモード
     private isHighlightMode = false;
     private highlightStart: { x: number; y: number } | null = null;
     private highlightColor = '#FFFF00';
+
+    // シェイプ描画モード
+    private shapeDrawingMode: ShapeType | null = null;
+    private drawingShape: ShapeAnnotation | null = null;
+    private shapeStrokeColor = '#FF0000';
+    private shapeStrokeWidth = 3;
+    private shapeFillColor = '';
 
     // リサイズ状態
     private isResizing = false;
@@ -104,6 +111,26 @@ export class CanvasInteractionManager {
         );
         const pdfX = point.x;
         const pdfY = point.y;
+
+        // シェイプ描画モード
+        if (this.shapeDrawingMode && e.button !== 2) {
+            const newShape: ShapeAnnotation = {
+                id: crypto.randomUUID(),
+                type: this.shapeDrawingMode,
+                x1: pdfX,
+                y1: pdfY,
+                x2: pdfX,
+                y2: pdfY,
+                strokeColor: this.shapeStrokeColor,
+                strokeWidth: this.shapeStrokeWidth,
+                fillColor: this.shapeFillColor || undefined,
+                path: this.shapeDrawingMode === 'freehand' ? [{ x: pdfX, y: pdfY }] : undefined
+            };
+            this.drawingShape = newShape;
+            this.selectedAnnotationId = null;
+            e.preventDefault();
+            return;
+        }
 
         // ハイライトモード
         if (this.isHighlightMode && e.button !== 2) {
@@ -211,6 +238,24 @@ export class CanvasInteractionManager {
             return;
         }
 
+        // シェイプ注釈のヒット判定
+        const hitShape = AnnotationManager.hitTestShape(page, pdfX, pdfY);
+        if (hitShape) {
+            this.selectedAnnotationId = hitShape.id;
+            this.draggingAnnotation = hitShape;
+            this.draggingStart = { x: hitShape.x1, y: hitShape.y1, x2: hitShape.x2, y2: hitShape.y2 };
+            this.dragOffset.x = pdfX - hitShape.x1;
+            this.dragOffset.y = pdfY - hitShape.y1;
+            this.elements.previewCanvas.style.cursor = 'grabbing';
+            if (this.renderManager) {
+                this.renderManager.redrawWithCachedBackground(this.selectedAnnotationId);
+            } else {
+                this.callbacks.updateMainView();
+            }
+            e.preventDefault();
+            return;
+        }
+
         // 選択解除
         if (this.selectedAnnotationId) {
             this.selectedAnnotationId = null;
@@ -229,10 +274,11 @@ export class CanvasInteractionManager {
         const isHighlightDragging = this.isHighlightMode && !!this.highlightStart;
         const isAnnotationDragging = !!this.draggingAnnotation;
         const isRotating = !!this.rotatingAnnotationId;
+        const isShapeDrawing = !!this.drawingShape;
 
         if (this.isResizing && this.resizeStart) {
             e.preventDefault();
-        } else if (isHighlightDragging || isAnnotationDragging || isRotating) {
+        } else if (isHighlightDragging || isAnnotationDragging || isRotating || isShapeDrawing) {
             e.preventDefault();
         } else {
             return;
@@ -256,6 +302,26 @@ export class CanvasInteractionManager {
     private handleCanvasMouseMove(e: MouseEvent, page: PageData): void {
         const { x: canvasX, y: canvasY } = this.getCanvasPoint(e);
         const canvas = this.elements.previewCanvas;
+
+        // シェイプ描画プレビュー
+        if (this.drawingShape) {
+            const point = AnnotationManager.toPdfPoint(
+                canvasX, canvasY, this.previewScale, page.height, page.width, page.rotation
+            );
+            if (this.drawingShape.type === 'freehand') {
+                this.drawingShape.path!.push({ x: point.x, y: point.y });
+            } else {
+                this.drawingShape.x2 = point.x;
+                this.drawingShape.y2 = point.y;
+            }
+            // 一時描画
+            if (this.renderManager) {
+                this.renderManager.redrawWithCachedBackground(null);
+            }
+            const ctx = this.elements.previewCanvas.getContext('2d')!;
+            AnnotationManager.drawShape(ctx, this.drawingShape, page.height, this.previewScale, false);
+            return;
+        }
 
         // ハイライトプレビュー
         if (this.isHighlightMode && this.highlightStart) {
@@ -314,8 +380,26 @@ export class CanvasInteractionManager {
             const point = AnnotationManager.toPdfPoint(
                 canvasX, canvasY, this.previewScale, page.height, page.width, page.rotation
             );
-            this.draggingAnnotation.x = point.x - this.dragOffset.x;
-            this.draggingAnnotation.y = point.y - this.dragOffset.y;
+            // シェイプの場合はx1/y1とx2/y2を両方移動
+            if ('x1' in this.draggingAnnotation) {
+                const shape = this.draggingAnnotation as ShapeAnnotation;
+                const dx = (point.x - this.dragOffset.x) - shape.x1;
+                const dy = (point.y - this.dragOffset.y) - shape.y1;
+                shape.x1 += dx;
+                shape.y1 += dy;
+                shape.x2 += dx;
+                shape.y2 += dy;
+                // freehand用: パス全体を移動
+                if (shape.path) {
+                    for (const p of shape.path) {
+                        p.x += dx;
+                        p.y += dy;
+                    }
+                }
+            } else {
+                this.draggingAnnotation.x = point.x - this.dragOffset.x;
+                this.draggingAnnotation.y = point.y - this.dragOffset.y;
+            }
             if (this.renderManager) {
                 this.renderManager.redrawWithCachedBackground(this.selectedAnnotationId);
             } else {
@@ -358,6 +442,28 @@ export class CanvasInteractionManager {
 
     public onCanvasMouseUp(e: MouseEvent): void {
         const page = this.state.pages[this.state.selectedPageIndex];
+
+        // シェイプ作成確定
+        if (this.drawingShape && page) {
+            const shape = this.drawingShape;
+            // 最小サイズチェック
+            const minSize = shape.type === 'freehand'
+                ? (shape.path?.length || 0) > 3
+                : Math.abs(shape.x2 - shape.x1) > 5 || Math.abs(shape.y2 - shape.y1) > 5;
+
+            if (minSize) {
+                if (!page.shapeAnnotations) page.shapeAnnotations = [];
+                page.shapeAnnotations.push(shape);
+                this.callbacks.pushUndo({ type: 'addShape', pageId: page.id, annotationId: shape.id });
+                this.callbacks.showToast('図形を追加しました', 'success');
+                this.selectedAnnotationId = shape.id;
+            }
+            this.drawingShape = null;
+            if (this.renderManager) {
+                this.renderManager.redrawWithCachedBackground(this.selectedAnnotationId);
+            }
+            return;
+        }
 
         // ハイライト作成
         if (this.isHighlightMode && this.highlightStart) {
@@ -486,7 +592,21 @@ export class CanvasInteractionManager {
     private commitAnnotationDrag(): void {
         const page = this.state.pages[this.state.selectedPageIndex];
         if (page && this.draggingAnnotation && this.draggingStart) {
-            if (Math.abs(this.draggingStart.x - this.draggingAnnotation.x) > 1 || Math.abs(this.draggingStart.y - this.draggingAnnotation.y) > 1) {
+            // シェイプの場合
+            if ('x1' in this.draggingAnnotation) {
+                const shape = this.draggingAnnotation as ShapeAnnotation;
+                const startX2 = this.draggingStart.x2 ?? shape.x2;
+                const startY2 = this.draggingStart.y2 ?? shape.y2;
+                if (Math.abs(this.draggingStart.x - shape.x1) > 1 || Math.abs(this.draggingStart.y - shape.y1) > 1) {
+                    this.callbacks.pushUndo({
+                        type: 'moveShape', pageId: page.id, annotationId: shape.id,
+                        fromX1: this.draggingStart.x, fromY1: this.draggingStart.y,
+                        fromX2: startX2, fromY2: startY2,
+                        toX1: shape.x1, toY1: shape.y1,
+                        toX2: shape.x2, toY2: shape.y2
+                    });
+                }
+            } else if (Math.abs(this.draggingStart.x - this.draggingAnnotation.x) > 1 || Math.abs(this.draggingStart.y - this.draggingAnnotation.y) > 1) {
                 if ('text' in this.draggingAnnotation) {
                     this.callbacks.pushUndo({
                         type: 'moveText', pageId: page.id, annotationId: this.draggingAnnotation.id,
@@ -521,5 +641,36 @@ export class CanvasInteractionManager {
 
     public getIsHighlightMode(): boolean {
         return this.isHighlightMode;
+    }
+
+    public setShapeMode(type: ShapeType | null): void {
+        this.shapeDrawingMode = type;
+        this.disableHighlightMode();
+        this.elements.previewCanvas.style.cursor = type ? 'crosshair' : 'default';
+        this.elements.btnShapes?.classList.toggle('active', !!type);
+        if (type) {
+            this.callbacks.showToast(`図形モード: ${this.getShapeTypeName(type)}`, 'success');
+        }
+    }
+
+    public setShapeOptions(strokeColor: string, strokeWidth: number, fillColor: string): void {
+        this.shapeStrokeColor = strokeColor;
+        this.shapeStrokeWidth = strokeWidth;
+        this.shapeFillColor = fillColor;
+    }
+
+    public getShapeDrawingMode(): ShapeType | null {
+        return this.shapeDrawingMode;
+    }
+
+    private getShapeTypeName(type: ShapeType): string {
+        const names: Record<ShapeType, string> = {
+            line: '直線',
+            arrow: '矢印',
+            rectangle: '矩形',
+            ellipse: '円/楕円',
+            freehand: 'ペン'
+        };
+        return names[type];
     }
 }

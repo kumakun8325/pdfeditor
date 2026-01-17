@@ -16,7 +16,7 @@ import { ExportManager } from './managers/ExportManager';
 import { ClipboardManager } from './managers/ClipboardManager';
 import { FileOperationManager } from './managers/FileOperationManager';
 import { CanvasInteractionManager } from './managers/CanvasInteractionManager';
-import type { AppState, PageData, ToastType, TextAnnotation, UndoAction, UIElements, AppAction } from './types';
+import type { AppState, PageData, ToastType, TextAnnotation, UndoAction, UIElements, AppAction, ShapeType } from './types';
 import './styles/index.css';
 
 // Worker設定はPDFService側で行われる
@@ -115,6 +115,24 @@ export class PDFEditorApp implements AppAction {
                 page.highlightAnnotations.splice(index, 1);
                 this.selectedAnnotationId = null;
                 this.showToast('ハイライトを削除しました', 'success');
+                if (this.renderManager) {
+                    this.renderManager.redrawWithCachedBackground(null);
+                } else {
+                    this.updateMainView();
+                }
+                return;
+            }
+        }
+
+        // シェイプから検索
+        if (page.shapeAnnotations) {
+            const index = page.shapeAnnotations.findIndex(a => a.id === this.selectedAnnotationId);
+            if (index !== -1) {
+                const annotation = page.shapeAnnotations[index];
+                this.pushUndo({ type: 'deleteShape', pageId: page.id, annotationId: annotation.id, annotation });
+                page.shapeAnnotations.splice(index, 1);
+                this.selectedAnnotationId = null;
+                this.showToast('図形を削除しました', 'success');
                 if (this.renderManager) {
                     this.renderManager.redrawWithCachedBackground(null);
                 } else {
@@ -443,6 +461,18 @@ export class PDFEditorApp implements AppAction {
             textColor: document.getElementById('text-color') as HTMLInputElement,
             // ハイライト
             btnHighlight: document.getElementById('btn-highlight') as HTMLButtonElement,
+            // 図形
+            btnShapes: document.getElementById('btn-shapes') as HTMLButtonElement,
+            shapeMenu: document.getElementById('shape-menu') as HTMLDivElement,
+            btnShapeLine: document.getElementById('btn-shape-line') as HTMLButtonElement,
+            btnShapeArrow: document.getElementById('btn-shape-arrow') as HTMLButtonElement,
+            btnShapeRect: document.getElementById('btn-shape-rect') as HTMLButtonElement,
+            btnShapeEllipse: document.getElementById('btn-shape-ellipse') as HTMLButtonElement,
+            btnShapeFreehand: document.getElementById('btn-shape-freehand') as HTMLButtonElement,
+            shapeStrokeWidth: document.getElementById('shape-stroke-width') as HTMLSelectElement,
+            shapeStrokeColor: document.getElementById('shape-stroke-color') as HTMLInputElement,
+            shapeFillColor: document.getElementById('shape-fill-color') as HTMLInputElement,
+            shapeFillEnabled: document.getElementById('shape-fill-enabled') as HTMLInputElement,
             // ズーム
             btnZoomIn: document.getElementById('btn-zoom-in') as HTMLButtonElement,
             btnZoomOut: document.getElementById('btn-zoom-out') as HTMLButtonElement,
@@ -864,6 +894,19 @@ export class PDFEditorApp implements AppAction {
         this.canvasInteractionManager.disableHighlightMode();
     }
 
+    /**
+     * シェイプモード設定 (CanvasInteractionManagerに委譲)
+     */
+    public setShapeMode(type: ShapeType | null): void {
+        this.canvasInteractionManager.setShapeMode(type);
+    }
+
+    /**
+     * シェイプオプション設定 (CanvasInteractionManagerに委譲)
+     */
+    public setShapeOptions(strokeColor: string, strokeWidth: number, fillColor: string): void {
+        this.canvasInteractionManager.setShapeOptions(strokeColor, strokeWidth, fillColor);
+    }
 
     private pushUndo(action: UndoAction): void {
         this.undoManager.push(action);

@@ -62,6 +62,7 @@ export class ToolbarManager {
 
         elements.btnAddText.disabled = !hasPages || selectedIndex < 0;
         elements.btnHighlight.disabled = !hasPages || selectedIndex < 0;
+        elements.btnShapes.disabled = !hasPages || selectedIndex < 0;
 
         elements.btnExportPng.disabled = !hasPages || selectedIndex < 0;
         elements.btnExportAll.disabled = !hasPages;

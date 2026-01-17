@@ -41,6 +41,37 @@ export interface HighlightAnnotation {
 }
 
 /**
+ * シェイプの種類
+ */
+export type ShapeType = 'line' | 'arrow' | 'rectangle' | 'ellipse' | 'freehand';
+
+/**
+ * シェイプ注釈
+ */
+export interface ShapeAnnotation {
+    /** 一意のID */
+    id: string;
+    /** シェイプの種類 */
+    type: ShapeType;
+    /** 開始点X座標 (ページ座標系, pt) */
+    x1: number;
+    /** 開始点Y座標 (ページ座標系, pt) */
+    y1: number;
+    /** 終了点X座標 (ページ座標系, pt) */
+    x2: number;
+    /** 終了点Y座標 (ページ座標系, pt) */
+    y2: number;
+    /** 自由線用のパス */
+    path?: { x: number; y: number }[];
+    /** 線の色 (hex) */
+    strokeColor: string;
+    /** 塗りつぶし色 (hex, undefinedで透明) */
+    fillColor?: string;
+    /** 線の太さ (px) */
+    strokeWidth: number;
+}
+
+/**
  * ページデータ
  */
 export interface PageData {
@@ -72,6 +103,8 @@ export interface PageData {
     textAnnotations?: TextAnnotation[];
     /** ハイライト注釈 */
     highlightAnnotations?: HighlightAnnotation[];
+    /** シェイプ注釈 */
+    shapeAnnotations?: ShapeAnnotation[];
 }
 
 /**
@@ -149,6 +182,10 @@ export type UndoAction =
     | { type: 'deleteHighlight'; pageId: string; annotationId: string; annotation: HighlightAnnotation }
     | { type: 'updateText'; pageId: string; annotationId: string; oldText: string; newText: string; oldColor: string; newColor: string; oldFontSize: number; newFontSize: number }
     | { type: 'resizeHighlight'; pageId: string; annotationId: string; oldWidth: number; newWidth: number; oldHeight: number; newHeight: number }
+    // シェイプ注釈
+    | { type: 'addShape'; pageId: string; annotationId: string; annotation?: ShapeAnnotation }
+    | { type: 'deleteShape'; pageId: string; annotationId: string; annotation: ShapeAnnotation }
+    | { type: 'moveShape'; pageId: string; annotationId: string; fromX1: number; fromY1: number; fromX2: number; fromY2: number; toX1: number; toY1: number; toX2: number; toY2: number }
     // バッチ操作
     | { type: 'batchMove'; fromIndices: number[]; toIndex: number; movedPageIds: string[] }
     | { type: 'batchRotate'; pageIds: string[]; previousRotations: number[] }
@@ -221,6 +258,18 @@ export interface UIElements {
     textColor: HTMLInputElement;
     // ハイライト
     btnHighlight: HTMLButtonElement;
+    // 図形
+    btnShapes: HTMLButtonElement;
+    shapeMenu: HTMLDivElement;
+    btnShapeLine: HTMLButtonElement;
+    btnShapeArrow: HTMLButtonElement;
+    btnShapeRect: HTMLButtonElement;
+    btnShapeEllipse: HTMLButtonElement;
+    btnShapeFreehand: HTMLButtonElement;
+    shapeStrokeWidth: HTMLSelectElement;
+    shapeStrokeColor: HTMLInputElement;
+    shapeFillColor: HTMLInputElement;
+    shapeFillEnabled: HTMLInputElement;
     // ズーム
     btnZoomIn: HTMLButtonElement;
     btnZoomOut: HTMLButtonElement;
@@ -277,6 +326,8 @@ export interface AppAction {
     closeTextModal(): void;
     addTextAnnotation(): void;
     toggleHighlightMode(): void;
+    setShapeMode(type: ShapeType | null): void;
+    setShapeOptions(strokeColor: string, strokeWidth: number, fillColor: string): void;
 
     // ズーム
     zoomIn(): void;
