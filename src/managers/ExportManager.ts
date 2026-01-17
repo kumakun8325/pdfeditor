@@ -1,6 +1,6 @@
 import { saveAs } from 'file-saver';
-import { PDFDocument, degrees, rgb, cmyk, StandardFonts } from 'pdf-lib';
-import type { AppState, ToastType } from '../types';
+import { PDFDocument, degrees, rgb, cmyk, StandardFonts, LineCapStyle, PDFPage } from 'pdf-lib';
+import type { AppState, ToastType, ShapeAnnotation } from '../types';
 import type { PDFService } from '../services/PDFService';
 import type { ImageService } from '../services/ImageService';
 import { ColorService } from '../services/ColorService';
@@ -116,6 +116,14 @@ export class ExportManager {
                             color: highlightColor,
                             opacity: 0.3,
                         });
+                    }
+                }
+
+                // シェイプ注釈を埋め込む
+                if (pdfPage && page.shapeAnnotations && page.shapeAnnotations.length > 0) {
+                    const isCmyk = this.state.exportOptions.colorSpace === 'cmyk';
+                    for (const shape of page.shapeAnnotations) {
+                        this.embedShapeAnnotation(pdfPage, shape, isCmyk);
                     }
                 }
             }
@@ -269,6 +277,32 @@ export class ExportManager {
                         });
                     }
                 }
+
+                // ハイライト注釈を埋め込む
+                if (pdfPage && page.highlightAnnotations && page.highlightAnnotations.length > 0) {
+                    for (const annotation of page.highlightAnnotations) {
+                        const hex = annotation.color.replace('#', '');
+                        const r = parseInt(hex.substring(0, 2), 16) / 255;
+                        const g = parseInt(hex.substring(2, 4), 16) / 255;
+                        const b = parseInt(hex.substring(4, 6), 16) / 255;
+
+                        pdfPage.drawRectangle({
+                            x: annotation.x,
+                            y: annotation.y,
+                            width: annotation.width,
+                            height: annotation.height,
+                            color: rgb(r, g, b),
+                            opacity: 0.3,
+                        });
+                    }
+                }
+
+                // シェイプ注釈を埋め込む
+                if (pdfPage && page.shapeAnnotations && page.shapeAnnotations.length > 0) {
+                    for (const shape of page.shapeAnnotations) {
+                        this.embedShapeAnnotation(pdfPage, shape, false);
+                    }
+                }
             }
 
             const pdfBytes = await pdfDoc.save();
@@ -294,5 +328,140 @@ export class ExportManager {
         a.download = fileName;
         a.click();
         URL.revokeObjectURL(url);
+    }
+
+    /**
+     * シェイプ注釈をPDFページに埋め込む
+     */
+    private embedShapeAnnotation(pdfPage: PDFPage, shape: ShapeAnnotation, isCmyk: boolean): void {
+        // 色変換
+        let strokeColor;
+        let fillColor;
+
+        if (isCmyk) {
+            const [c, m, y, k] = ColorService.hexToCmyk(shape.strokeColor);
+            strokeColor = cmyk(c, m, y, k);
+            if (shape.fillColor) {
+                const [fc, fm, fy, fk] = ColorService.hexToCmyk(shape.fillColor);
+                fillColor = cmyk(fc, fm, fy, fk);
+            }
+        } else {
+            const hex = shape.strokeColor.replace('#', '');
+            const r = parseInt(hex.substring(0, 2), 16) / 255;
+            const g = parseInt(hex.substring(2, 4), 16) / 255;
+            const b = parseInt(hex.substring(4, 6), 16) / 255;
+            strokeColor = rgb(r, g, b);
+            if (shape.fillColor) {
+                const fhex = shape.fillColor.replace('#', '');
+                const fr = parseInt(fhex.substring(0, 2), 16) / 255;
+                const fg = parseInt(fhex.substring(2, 4), 16) / 255;
+                const fb = parseInt(fhex.substring(4, 6), 16) / 255;
+                fillColor = rgb(fr, fg, fb);
+            }
+        }
+
+        const lineWidth = shape.strokeWidth;
+
+        switch (shape.type) {
+            case 'line':
+                pdfPage.drawLine({
+                    start: { x: shape.x1, y: shape.y1 },
+                    end: { x: shape.x2, y: shape.y2 },
+                    thickness: lineWidth,
+                    color: strokeColor,
+                    lineCap: LineCapStyle.Round,
+                });
+                break;
+
+            case 'arrow': {
+                // 線を描画
+                pdfPage.drawLine({
+                    start: { x: shape.x1, y: shape.y1 },
+                    end: { x: shape.x2, y: shape.y2 },
+                    thickness: lineWidth,
+                    color: strokeColor,
+                    lineCap: LineCapStyle.Round,
+                });
+                // 矢じりを描画（三角形）
+                const angle = Math.atan2(shape.y2 - shape.y1, shape.x2 - shape.x1);
+                const headLen = 10;
+                const ax1 = shape.x2 - headLen * Math.cos(angle - Math.PI / 6);
+                const ay1 = shape.y2 - headLen * Math.sin(angle - Math.PI / 6);
+                const ax2 = shape.x2 - headLen * Math.cos(angle + Math.PI / 6);
+                const ay2 = shape.y2 - headLen * Math.sin(angle + Math.PI / 6);
+
+                // 矢じりは三角形として描画
+                pdfPage.drawLine({
+                    start: { x: shape.x2, y: shape.y2 },
+                    end: { x: ax1, y: ay1 },
+                    thickness: lineWidth,
+                    color: strokeColor,
+                    lineCap: LineCapStyle.Round,
+                });
+                pdfPage.drawLine({
+                    start: { x: shape.x2, y: shape.y2 },
+                    end: { x: ax2, y: ay2 },
+                    thickness: lineWidth,
+                    color: strokeColor,
+                    lineCap: LineCapStyle.Round,
+                });
+                pdfPage.drawLine({
+                    start: { x: ax1, y: ay1 },
+                    end: { x: ax2, y: ay2 },
+                    thickness: lineWidth,
+                    color: strokeColor,
+                    lineCap: LineCapStyle.Round,
+                });
+                break;
+            }
+
+            case 'rectangle': {
+                const x = Math.min(shape.x1, shape.x2);
+                const y = Math.min(shape.y1, shape.y2);
+                const width = Math.abs(shape.x2 - shape.x1);
+                const height = Math.abs(shape.y2 - shape.y1);
+
+                pdfPage.drawRectangle({
+                    x,
+                    y,
+                    width,
+                    height,
+                    borderColor: strokeColor,
+                    borderWidth: lineWidth,
+                    color: fillColor,
+                });
+                break;
+            }
+
+            case 'ellipse': {
+                const cx = (shape.x1 + shape.x2) / 2;
+                const cy = (shape.y1 + shape.y2) / 2;
+                // pdf-libのellipseはx, yが中心、radiusがx/y方向の半径
+                pdfPage.drawEllipse({
+                    x: cx,
+                    y: cy,
+                    xScale: Math.abs(shape.x2 - shape.x1) / 2,
+                    yScale: Math.abs(shape.y2 - shape.y1) / 2,
+                    borderColor: strokeColor,
+                    borderWidth: lineWidth,
+                    color: fillColor,
+                });
+                break;
+            }
+
+            case 'freehand':
+                if (shape.path && shape.path.length > 1) {
+                    for (let i = 0; i < shape.path.length - 1; i++) {
+                        pdfPage.drawLine({
+                            start: { x: shape.path[i].x, y: shape.path[i].y },
+                            end: { x: shape.path[i + 1].x, y: shape.path[i + 1].y },
+                            thickness: lineWidth,
+                            color: strokeColor,
+                            lineCap: LineCapStyle.Round,
+                        });
+                    }
+                }
+                break;
+        }
     }
 }

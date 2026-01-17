@@ -4,6 +4,44 @@
 
 ---
 
+## 2026-01-17 (金) - Phase 41 Implementation
+
+### 実施内容
+- **Phase 41: ベクターシェイプ（図形描画）機能の実装**
+    - 5種類の図形: 直線、矢印、矩形、楕円、自由線（ペン）
+    - 色・線の太さ設定、塗りつぶしオプション
+    - 図形の選択、移動、削除
+    - Undo/Redo対応
+    - PDFへの図形埋め込み
+    - コードレビューによるバグ修正:
+        - freehandパスのundo/redo処理追加
+        - ShapeAnnotationのディープコピー対応
+        - saveAsPDFのハイライト注釈埋め込み追加
+        - 非null assertion修正
+
+### 変更ファイル
+- `src/types/index.ts` - ShapeType, ShapeAnnotation型追加、UIElements/UndoAction拡張
+- `src/managers/AnnotationManager.ts` - drawShape(), hitTestShape()追加
+- `src/managers/CanvasInteractionManager.ts` - シェイプ描画モード追加
+- `src/managers/UndoExecutionManager.ts` - addShape/deleteShape/moveShapeのUndo/Redo
+- `src/managers/ExportManager.ts` - embedShapeAnnotation()追加、saveAsPDFにハイライト追加
+- `src/managers/EventManager.ts` - setupShapeMenu()追加
+- `src/managers/ToolbarManager.ts` - btnShapes有効/無効制御
+- `src/main.ts` - setShapeMode(), setShapeOptions(), deleteSelectedAnnotation拡張
+- `index.html` - 図形ツールバーUI追加
+- `docs/handoff.md` - 完了報告
+- `docs/task_41_vector_shapes.md` - ステータス更新
+
+### 次回TODO
+- Antigravity で `/verify` を実行してテストを検証
+- マージ後、次フェーズの計画
+
+### ブランチ状態
+- ブランチ名: `feature/issue-7-vector-shapes`
+- 状態: 実装完了、PR作成待ち
+
+---
+
 ## 2026-01-15 (水) - Night Session
 
 ### 実施内容

@@ -1,4 +1,4 @@
-import type { PageData, TextAnnotation, HighlightAnnotation } from '../types';
+import type { PageData, TextAnnotation, HighlightAnnotation, ShapeAnnotation } from '../types';
 
 export class AnnotationManager {
     /**
@@ -515,6 +515,14 @@ export class AnnotationManager {
             }
         }
 
+        // シェイプ注釈を描画
+        if (page.shapeAnnotations && page.shapeAnnotations.length > 0) {
+            for (const shape of page.shapeAnnotations) {
+                const isSelected = shape.id === selectedAnnotationId;
+                this.drawShape(ctx, shape, page.height, scale, isSelected);
+            }
+        }
+
         // テキスト注釈を描画
         if (page.textAnnotations && page.textAnnotations.length > 0) {
             for (const annotation of page.textAnnotations) {
@@ -582,6 +590,124 @@ export class AnnotationManager {
 
             ctx.restore();
         }
+    }
+
+    /**
+     * 個別のシェイプを描画
+     */
+    public static drawShape(
+        ctx: CanvasRenderingContext2D,
+        shape: ShapeAnnotation,
+        pageHeight: number,
+        scale: number,
+        isSelected: boolean
+    ): void {
+        ctx.save();
+        ctx.strokeStyle = shape.strokeColor;
+        ctx.lineWidth = shape.strokeWidth * scale;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+
+        const x1 = shape.x1 * scale;
+        const y1 = (pageHeight - shape.y1) * scale;
+        const x2 = shape.x2 * scale;
+        const y2 = (pageHeight - shape.y2) * scale;
+
+        switch (shape.type) {
+            case 'line':
+                ctx.beginPath();
+                ctx.moveTo(x1, y1);
+                ctx.lineTo(x2, y2);
+                ctx.stroke();
+                break;
+
+            case 'arrow': {
+                // 線を描画
+                ctx.beginPath();
+                ctx.moveTo(x1, y1);
+                ctx.lineTo(x2, y2);
+                ctx.stroke();
+                // 矢じりを描画
+                const angle = Math.atan2(y2 - y1, x2 - x1);
+                const headLen = 10 * scale;
+                ctx.beginPath();
+                ctx.moveTo(x2, y2);
+                ctx.lineTo(x2 - headLen * Math.cos(angle - Math.PI / 6), y2 - headLen * Math.sin(angle - Math.PI / 6));
+                ctx.lineTo(x2 - headLen * Math.cos(angle + Math.PI / 6), y2 - headLen * Math.sin(angle + Math.PI / 6));
+                ctx.closePath();
+                ctx.fillStyle = shape.strokeColor;
+                ctx.fill();
+                break;
+            }
+
+            case 'rectangle':
+                if (shape.fillColor) {
+                    ctx.fillStyle = shape.fillColor;
+                    ctx.fillRect(Math.min(x1, x2), Math.min(y1, y2), Math.abs(x2 - x1), Math.abs(y2 - y1));
+                }
+                ctx.strokeRect(Math.min(x1, x2), Math.min(y1, y2), Math.abs(x2 - x1), Math.abs(y2 - y1));
+                break;
+
+            case 'ellipse': {
+                const cx = (x1 + x2) / 2;
+                const cy = (y1 + y2) / 2;
+                const rx = Math.abs(x2 - x1) / 2;
+                const ry = Math.abs(y2 - y1) / 2;
+                ctx.beginPath();
+                ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+                if (shape.fillColor) {
+                    ctx.fillStyle = shape.fillColor;
+                    ctx.fill();
+                }
+                ctx.stroke();
+                break;
+            }
+
+            case 'freehand':
+                if (shape.path && shape.path.length > 1) {
+                    ctx.beginPath();
+                    ctx.moveTo(shape.path[0].x * scale, (pageHeight - shape.path[0].y) * scale);
+                    for (let i = 1; i < shape.path.length; i++) {
+                        ctx.lineTo(shape.path[i].x * scale, (pageHeight - shape.path[i].y) * scale);
+                    }
+                    ctx.stroke();
+                }
+                break;
+        }
+
+        // 選択枠を描画
+        if (isSelected) {
+            ctx.strokeStyle = '#007aff';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([5, 3]);
+
+            let minX: number, maxX: number, minY: number, maxY: number;
+
+            if (shape.type === 'freehand' && shape.path && shape.path.length > 0) {
+                const xs = shape.path.map(p => p.x * scale);
+                const ys = shape.path.map(p => (pageHeight - p.y) * scale);
+                minX = Math.min(...xs) - 5;
+                maxX = Math.max(...xs) + 5;
+                minY = Math.min(...ys) - 5;
+                maxY = Math.max(...ys) + 5;
+            } else {
+                minX = Math.min(x1, x2) - 5;
+                maxX = Math.max(x1, x2) + 5;
+                minY = Math.min(y1, y2) - 5;
+                maxY = Math.max(y1, y2) + 5;
+            }
+
+            ctx.strokeRect(minX, minY, maxX - minX, maxY - minY);
+            ctx.setLineDash([]);
+
+            // ハンドルを描画
+            this.drawHandle(ctx, minX, minY);
+            this.drawHandle(ctx, maxX, minY);
+            this.drawHandle(ctx, minX, maxY);
+            this.drawHandle(ctx, maxX, maxY);
+        }
+
+        ctx.restore();
     }
 
     /**
@@ -900,6 +1026,43 @@ export class AnnotationManager {
             return hl;
         }
 
+        return null;
+    }
+
+    /**
+     * シェイプ注釈のヒット判定
+     */
+    public static hitTestShape(
+        page: PageData,
+        pdfX: number,
+        pdfY: number
+    ): ShapeAnnotation | null {
+        if (!page.shapeAnnotations || page.shapeAnnotations.length === 0) return null;
+        const margin = 5;
+
+        for (let i = page.shapeAnnotations.length - 1; i >= 0; i--) {
+            const s = page.shapeAnnotations[i];
+
+            let minX: number, maxX: number, minY: number, maxY: number;
+
+            if (s.type === 'freehand' && s.path && s.path.length > 0) {
+                const xs = s.path.map(p => p.x);
+                const ys = s.path.map(p => p.y);
+                minX = Math.min(...xs) - margin;
+                maxX = Math.max(...xs) + margin;
+                minY = Math.min(...ys) - margin;
+                maxY = Math.max(...ys) + margin;
+            } else {
+                minX = Math.min(s.x1, s.x2) - margin;
+                maxX = Math.max(s.x1, s.x2) + margin;
+                minY = Math.min(s.y1, s.y2) - margin;
+                maxY = Math.max(s.y1, s.y2) + margin;
+            }
+
+            if (pdfX >= minX && pdfX <= maxX && pdfY >= minY && pdfY <= maxY) {
+                return s;
+            }
+        }
         return null;
     }
 }

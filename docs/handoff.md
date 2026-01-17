@@ -6,13 +6,13 @@
 
 ## Current Task
 
-**Status**: `COMPLETED`
+**Status**: `READY_FOR_VERIFY`
 
 | Field | Value |
 |-------|-------|
-| Task ID | Phase 40 |
-| Issue | [#5](https://github.com/kumakun8325/pdfeditor/issues/5) |
-| Task Doc | [docs/task40.md](file:///c:/tool/pdfeditor/docs/task40.md) |
+| Task ID | Phase 41 |
+| Issue | #7 |
+| Task Doc | [docs/task_41_vector_shapes.md](file:///c:/tool/pdfeditor/docs/task_41_vector_shapes.md) |
 | Assigned To | Claude |
 
 ---
@@ -23,43 +23,38 @@
 
 ### Task Summary
 
-Vitest + Playwright による自動テスト環境の構築。
-- ユニットテスト: ColorService, UndoManager, PDFService, SelectionManager
-- E2Eテスト: PDF読み込み、ページ操作
-- CI/CD: GitHub Actions
+Phase 41: ベクターシェイプ（図形描画）機能の実装。
+- 5種類の図形: 直線、矢印、矩形、楕円、自由線（ペン）
+- 既存のテキスト/ハイライト注釈と同じパターンで実装
+- 色・線の太さ設定、塗りつぶしオプション対応
 
 ### Key Files
 
-**New Files to Create:**
-- `vitest.config.ts`
-- `playwright.config.ts`
-- `tests/unit/services/ColorService.test.ts`
-- `tests/unit/managers/UndoManager.test.ts`
-- `tests/unit/managers/SelectionManager.test.ts`
-- `tests/unit/services/PDFService.test.ts`
-- `tests/e2e/pdf-load.spec.ts`
-- `tests/e2e/page-operations.spec.ts`
-- `tests/fixtures/sample.pdf`
-- `tests/fixtures/sample.png`
-- `.github/workflows/test.yml`
-
 **Files to Modify:**
-- `package.json` (test scripts追加)
+- `src/types/index.ts` (L41付近) - ShapeAnnotation型追加
+- `src/managers/AnnotationManager.ts` (L516, L585付近) - 描画・ヒット判定追加
+- `src/managers/CanvasInteractionManager.ts` (L29, L109, L261, L363付近) - 図形描画モード追加
+- `src/managers/UndoExecutionManager.ts` - 図形Undo/Redo追加
+- `src/services/PDFService.ts` - PDF保存対応
+- `index.html` (L176付近) - ツールバーUI追加
 
 ### Implementation Notes
 
-1. **ColorServiceは既に存在** - `src/services/ColorService.ts` (staticメソッド)
-2. **pdfjs-distはモック必須** - Worker設定もモック対象
-3. **SelectionManagerはgetState()コールバックパターン** - mockStateを用意
-4. **E2Eでは`#file-input`を使用** - setInputFiles()でPDFアップロード
-5. **実装順序はtask40.mdのセクション14参照**
+1. **既存パターンに従う** - ハイライトモードと同じトグル方式
+2. **CanvasInteractionManagerのshapeDrawingMode** - `null | ShapeType`で図形種別を保持
+3. **freehandは特殊処理** - mouseMove時にpath配列に点を追加
+4. **pdf-lib使用** - `drawLine()`, `drawRectangle()`, `drawEllipse()` で描画
+5. **詳細な実装手順はtask_41_vector_shapes.md参照**
 
 ### Acceptance Criteria
 
-- [x] `npm run test` でユニットテストが実行できる
-- [x] `npm run test:e2e` でE2Eテストが実行できる (E2E tests created, may need system dependencies)
-- [x] GitHub ActionsでPR時にテストが自動実行される
-- [x] テストカバレッジレポートが生成される
+- [ ] 5種類の図形が描画できる
+- [ ] 図形の色・線の太さを設定できる
+- [ ] 矩形・楕円で塗りつぶしの有無を選択できる
+- [ ] 図形を選択・移動・削除できる
+- [ ] Undo/Redoが動作する
+- [ ] PDFに保存される
+- [ ] `npm run build` が成功する
 
 ---
 
@@ -69,103 +64,55 @@ Vitest + Playwright による自動テスト環境の構築。
 
 ### Completed Work
 
-自動テスト環境を完全に構築しました。
+Phase 41: ベクターシェイプ（図形描画）機能を実装しました。
 
-**Unit Tests (Vitest):**
-- ColorService: RGB↔CMYK変換のテスト (15 tests)
-- UndoManager: Undo/Redoスタックのテスト (11 tests)
-- PDFService: ページ操作（削除、挿入、並び替え）のテスト (13 tests)
-- SelectionManager: ページ選択ロジックのテスト (17 tests)
+**実装した図形種類:**
+- 直線 (line)
+- 矢印 (arrow)
+- 矩形 (rectangle)
+- 楕円 (ellipse)
+- 自由線/ペン (freehand)
 
-**E2E Tests (Playwright):**
-- pdf-load.spec.ts: PDF読み込みフローのテスト (5 tests)
-- page-operations.spec.ts: ページ操作（削除、複製、回転、Undo/Redo）のテスト (7 tests)
+**機能:**
+- 図形の描画（ドラッグ操作）
+- 線の色、太さの設定
+- 塗りつぶし色（矩形・楕円）
+- 図形の選択、移動、削除
+- Undo/Redo対応
+- PDFへの保存（埋め込み）
 
-**CI/CD:**
-- GitHub Actions workflow で自動テスト実行を設定
-- ユニットテストとE2Eテストを並列実行
-- カバレッジレポート自動アップロード
-
-**Test Results:**
-- 56 unit tests: すべて成功 ✓
-- Build: 成功 ✓
+**Build & Lint:**
+- `npm run lint`: 成功 ✓
+- `npm run build`: 成功 ✓
 
 ### Changed Files
 
-**New Configuration Files:**
-- `vitest.config.ts` - Vitest設定
-- `playwright.config.ts` - Playwright設定
-
-**New Test Files:**
-- `tests/unit/services/ColorService.test.ts`
-- `tests/unit/services/PDFService.test.ts`
-- `tests/unit/managers/UndoManager.test.ts`
-- `tests/unit/managers/SelectionManager.test.ts`
-- `tests/e2e/pdf-load.spec.ts`
-- `tests/e2e/page-operations.spec.ts`
-
-**Test Fixtures:**
-- `tests/fixtures/sample.pdf`
-- `tests/fixtures/sample.png`
-
-**Helper Scripts:**
-- `scripts/create-test-pdf.ts`
-- `scripts/create-test-png.ts`
-
-**CI/CD:**
-- `.github/workflows/test.yml`
-
 **Modified:**
-- `package.json` - Added test scripts (test, test:ui, test:coverage, test:e2e, test:e2e:ui)
-- `docs/handoff.md` - Updated status and completion info
+- `src/types/index.ts` - ShapeType, ShapeAnnotation型追加、UIElements/UndoAction拡張
+- `src/managers/AnnotationManager.ts` - drawShape(), hitTestShape()追加
+- `src/managers/CanvasInteractionManager.ts` - シェイプ描画モード追加
+- `src/managers/UndoExecutionManager.ts` - addShape/deleteShape/moveShapeのUndo/Redo
+- `src/managers/ExportManager.ts` - embedShapeAnnotation()追加
+- `src/managers/EventManager.ts` - setupShapeMenu()追加
+- `src/managers/ToolbarManager.ts` - btnShapes有効/無効制御
+- `src/main.ts` - setShapeMode(), setShapeOptions(), deleteSelectedAnnotation拡張
+- `index.html` - 図形ツールバーUI追加
 
 ### Test Instructions
 
-**Run Unit Tests:**
-```bash
-npm run test              # Interactive mode
-npm run test:ui           # UI mode (browser interface)
-npm run test:coverage     # Generate coverage report
-```
-
-**Run E2E Tests:**
-```bash
-npm run test:e2e          # Headless mode
-npm run test:e2e:ui       # UI mode (browser interface)
-```
-
-**Note:** E2E tests require Playwright system dependencies. In CI, these are installed via `npx playwright install --with-deps`. On local WSL/Linux, you may see warnings but tests are configured.
-
-**Verify:**
-1. All 56 unit tests should pass
-2. Build should succeed: `npm run build`
-3. GitHub Actions workflow will run on PR to main branch
+**Manual Testing:**
+1. PDFを読み込む
+2. ツールバーの図形ボタン（四角アイコン）をクリック
+3. ドロップダウンから図形を選択（直線、矢印、矩形、楕円、ペン）
+4. キャンバス上でドラッグして描画
+5. 図形をクリックで選択、ドラッグで移動
+6. Deleteキーで削除
+7. Ctrl+Zでundo、Ctrl+Yでredo
+8. PDFを保存し、図形が埋め込まれていることを確認
 
 ### Known Issues
 
-**E2E Tests:**
-- E2E tests are created and configured but require Playwright browser dependencies
-- In WSL/Linux environments, may need: `sudo npx playwright install-deps`
-- Tests will run successfully in GitHub Actions CI environment
-- Local execution may require additional system packages
-
-**Test Coverage:**
-- Current tests focus on core services and managers
-- ImageService and StorageService not included (marked as optional in task40.md)
-- Additional E2E tests (annotations.spec.ts, export.spec.ts) can be added in future phases
-
-**None Critical:**
-- All acceptance criteria met
-- No blocking issues for merging
-
-### Verification Results (Antigravity Verified)
-- ✅ Build: Pass
-- ✅ Lint: Pass (Type Check)
-- ✅ Unit Test: 56/56 Pass
-- ⚠️ E2E Test: 2/24 Pass
-    - Local execution failed due to timeouts/selectors
-    - CI environment needs to be monitored
-    - Test case adjustment should be a follow-up task
+なし
 
 
 ---
